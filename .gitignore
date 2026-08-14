@@ -30,3 +30,6 @@ coverage.xml
 /var/lib/tinkerlab/
 tinkerlab-simulation/
 artifacts-store/
+
+# Deployment secrets generated locally
+.env.phase11.1.vercel

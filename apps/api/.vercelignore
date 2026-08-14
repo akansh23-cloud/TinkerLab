@@ -1,0 +1,10 @@
+tests/
+.pytest_cache/
+**/__pycache__/
+**/*.pyc
+CRASH
+*.sqlite
+*.db
+.env
+.env.*
+!/.env.example
