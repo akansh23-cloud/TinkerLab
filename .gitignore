@@ -1,0 +1,32 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+node_modules/
+.next/
+dist/
+build/
+coverage/
+.DS_Store
+*.sqlite3
+*.db
+
+# Phase 6A additions
+*.tsbuildinfo
+.env.local
+.env.*.local
+htmlcov/
+.coverage
+coverage.xml
+*.log
+.idea/
+.vscode/
+*.swp
+
+# TinkerLab runtime state — never source-controlled
+/var/lib/tinkerlab/
+tinkerlab-simulation/
+artifacts-store/

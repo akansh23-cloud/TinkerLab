@@ -1,0 +1,33 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+# Documented Phase-6 stabilization decision (see docs/PHASE5_STABILIZATION_FOR_PHASE6.md).
+# These are formatting/idiom rules, not correctness rules. Every correctness rule in the
+# selected sets (F, B, I, UP and the remaining E rules) is enforced with zero findings.
+ignore = [
+    # The repository deliberately uses dense single-line service/route/seed declarations.
+    # Reflowing ~1,600 pre-existing lines would obscure the Phase-6 diff without changing behaviour.
+    "E501",  # line-too-long
+    "E701",  # multiple statements on one line (colon)
+    "E702",  # multiple statements on one line (semicolon)
+    # FastAPI's dependency-injection contract *requires* Depends()/Header()/Query() in defaults.
+    "B008",  # function-call-in-default-argument
+]
+
+[tool.ruff.lint.per-file-ignores]
+# conftest must set DATABASE_URL/CORS_ORIGINS before application modules are imported.
+"tests/conftest.py" = ["E402"]
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true

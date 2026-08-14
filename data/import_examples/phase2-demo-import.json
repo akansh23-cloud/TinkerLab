@@ -1,0 +1,35 @@
+{
+  "materials": [
+    {
+      "external_record_id": "customer-demo-polymer-001",
+      "canonical_name": "customer-demo-polymer-001",
+      "display_name": "Imported Customer Demo Polymer",
+      "material_family": "polymer",
+      "description": "Synthetic import fixture for Phase 2 ingestion tests. Not a scientific claim.",
+      "visibility": "private",
+      "identifiers": [
+        {"namespace": "customer_code", "value": "DEMO-CUST-001", "is_primary": true}
+      ],
+      "composition": [
+        {"component_name": "Demo Matrix", "component_role": "matrix", "amount_value": 92, "amount_unit": "%", "amount_basis": "weight_percent"},
+        {"component_name": "Customer-private additive", "component_role": "additive", "amount_basis": "qualitative", "is_redacted": true, "redaction_label": "PRIVATE-ADDITIVE-A"}
+      ],
+      "process_states": [
+        {"state_label": "conditioned specimen", "process_name": "demo customer process", "parameters": {"demo_only": true}}
+      ],
+      "evidence": [
+        {"key": "density-evidence", "evidence_type": "user_provided", "title": "Synthetic customer density record", "method": "Imported demo fixture"}
+      ],
+      "observations": [
+        {
+          "property_key": "density",
+          "value_type": "numeric",
+          "numeric_value": 1210,
+          "unit": "kg/m^3",
+          "evidence_key": "density-evidence",
+          "condition_set": {"temperature_value": 23, "temperature_unit": "degC", "material_state": "conditioned specimen"}
+        }
+      ]
+    }
+  ]
+}

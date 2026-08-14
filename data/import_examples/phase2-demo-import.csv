@@ -1,0 +1,2 @@
+external_record_id,canonical_name,display_name,material_family,description,visibility,identifier_namespace,identifier_value,identifier_primary,property_key,value_type,numeric_value,unit,evidence_key,evidence_type,evidence_title,source_reference,method,condition_temperature,condition_temperature_unit
+customer-demo-csv-001,customer-demo-csv-001,Imported CSV Demo Polymer,polymer,Synthetic CSV import fixture. Not a scientific claim.,private,customer_code,DEMO-CSV-001,true,density,numeric,1190,kg/m^3,e1,user_provided,Synthetic CSV density record,,Imported demo fixture,23,degC
