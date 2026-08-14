@@ -33,3 +33,8 @@ artifacts-store/
 
 # Deployment secrets generated locally
 .env.phase11.1.vercel
+
+# Never commit environment secrets
+.env*
+!.env.example
+!.env.vercel.example
