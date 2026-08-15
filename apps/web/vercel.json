@@ -1,4 +1,9 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "framework": "nextjs"
+  "functions": {
+    "api/**/*.py": {
+      "maxDuration": 60,
+      "excludeFiles": "{node_modules/**,.next/**,coverage/**,**/__pycache__/**,**/*.pyc,python_backend/app/tests/**}"
+    }
+  }
 }

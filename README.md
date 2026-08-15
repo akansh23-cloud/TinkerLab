@@ -276,3 +276,6 @@ alembic upgrade head --sql
 ```
 
 Where frontend dependencies are installed, also run the repository web test/type/lint/build commands. The implementation reports record the exact verification performed for this Phase-9.1 package and explicitly identify unavailable external/runtime checks rather than claiming them.
+
+## Vercel Phase 12.2.2 deployment note
+The production `tinker-lab` project is deployed from `apps/web`. The same project now includes a Python FastAPI catch-all at `apps/web/api/index.py`, so `/api/*` is same-origin without Vercel Services. See `PHASE_12_2_2_HYBRID_VERCEL_FIX.md`.
