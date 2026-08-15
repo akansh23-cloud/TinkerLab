@@ -1,13 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import {useEffect, useMemo, useState} from "react";
+import {useEffect, useMemo, useState, type CSSProperties} from "react";
 import {useQuery} from "@tanstack/react-query";
 import {
   api, DecisionMatrix, PortfolioBoard, ProgramGaps, ProjectSummary, ReplacementProgramRecord,
   ReplacementRecommendationRecord, ScientificActionRecord,
 } from "@/lib/api";
 
+type MetricRingStyle = CSSProperties & {"--value": string};
+
+function metricRingStyle(degrees:number):MetricRingStyle{return {"--value":`${Math.round(degrees)}deg`}}
 function decisionFor(id:string,row:{eligibility:string;gates_satisfied:boolean},rec?:ReplacementRecommendationRecord){
   if(rec?.recommended_candidate_ids.includes(id)) return "ADVANCE";
   if(rec?.rejected_candidate_ids.includes(id)) return "REJECT";
@@ -32,7 +35,7 @@ export default function DecisionsWorkspace(){
   const actions=useQuery({queryKey:["decisions-actions",programId],enabled:!!programId,queryFn:()=>api<ScientificActionRecord[]>(`/replacement-programs/${programId}/actions?status=open`)});
   const recommendation=useQuery({queryKey:["decisions-rec",programId],enabled:!!programId,queryFn:()=>api<ReplacementRecommendationRecord>(`/replacement-programs/${programId}/recommendation?preview=true`)});
   const activeProject=projects.data?.find(p=>p.id===projectId);
-  const candidates=board.data?.candidates??[];
+  const candidates=useMemo(()=>board.data?.candidates??[],[board.data?.candidates]);
   const decisions=useMemo(()=>candidates.map(c=>decisionFor(c.candidate_id,c,recommendation.data)),[candidates,recommendation.data]);
   const advance=decisions.filter(d=>d==="ADVANCE").length,reject=decisions.filter(d=>d==="REJECT").length,hold=decisions.filter(d=>d==="HOLD / TEST").length;
 
@@ -69,9 +72,9 @@ export default function DecisionsWorkspace(){
           return <article className={`candidate-decision-card ${state}`} key={c.candidate_id}>
             <div className="candidate-card-top"><div><span>CANDIDATE {String.fromCharCode(65+index)}</span><h2>{c.display_name}</h2><p>{d==="ADVANCE"?"All currently evaluated blocking gates are satisfied.":d==="REJECT"?"Definitive evidence violates at least one blocking requirement.":"The candidate remains scientifically unresolved; more evidence is required."}</p></div><b>{d}</b></div>
             <div className="decision-ring-row">
-              <div className="metric-ring" style={{"--value":`${Math.round(c.evidence_coverage*360)}deg`} as any}><span><strong>{pct(c.evidence_coverage)}</strong><small>Coverage</small></span></div>
-              <div className="metric-ring confidence" style={{"--value":`${Math.round(Math.max(0,100-risk)*3.6)}deg`} as any}><span><strong>{Math.max(0,100-risk)}%</strong><small>Readiness</small></span></div>
-              <div className="metric-ring risk" style={{"--value":`${Math.round(risk*3.6)}deg`} as any}><span><strong>{risk}%</strong><small>Risk</small></span></div>
+              <div className="metric-ring" style={metricRingStyle(c.evidence_coverage*360)}><span><strong>{pct(c.evidence_coverage)}</strong><small>Coverage</small></span></div>
+              <div className="metric-ring confidence" style={metricRingStyle(Math.max(0,100-risk)*3.6)}><span><strong>{Math.max(0,100-risk)}%</strong><small>Readiness</small></span></div>
+              <div className="metric-ring risk" style={metricRingStyle(risk*3.6)}><span><strong>{risk}%</strong><small>Risk</small></span></div>
             </div>
             <div className="requirement-mini-table"><div><span>Requirement state</span><span>Outcome</span></div>{cells.slice(0,5).map(({r,cell})=><div key={r.requirement_id}><span>{r.display_name}</span><b className={`cell-state ${cell.status}`}>{cell.status.toUpperCase()}</b></div>)}</div>
             <div className="candidate-card-foot"><span className={fail?"bad":unknown?"warn":"good"}>{fail?`${fail} blocking failure${fail===1?"":"s"}`:unknown?`${unknown} unresolved requirement${unknown===1?"":"s"}`:`${pass} evaluated requirements satisfied`}</span><Link href={`/projects/${projectId}/replacement`}>Explain →</Link></div>
@@ -81,7 +84,7 @@ export default function DecisionsWorkspace(){
       </section>
 
       <section className="decision-lower-grid">
-        <div className="command-panel why-panel"><div className="panel-title-row"><div><span className="panel-kicker">Why this decision?</span><h2>Decision rationale</h2></div></div><div className="why-list">{candidates.slice(0,4).map((c,index)=>{const d=decisionFor(c.candidate_id,c,recommendation.data);return <article key={c.candidate_id} className={cls(d)}><span>{d==="ADVANCE"?"✓":d==="REJECT"?"×":"◷"}</span><div><strong>{c.display_name}</strong><p>{d==="ADVANCE"?"No definitive blocking failure is present and the current gating evidence supports advancement.":d==="REJECT"?"At least one blocking gate has definitive failing evidence; optimization strengths cannot override it.":"Missing, conflicting, or insufficient evidence prevents a defensible accept/reject outcome."}</p></div></article>})}</div></div>
+        <div className="command-panel why-panel"><div className="panel-title-row"><div><span className="panel-kicker">Why this decision?</span><h2>Decision rationale</h2></div></div><div className="why-list">{candidates.slice(0,4).map(c=>{const d=decisionFor(c.candidate_id,c,recommendation.data);return <article key={c.candidate_id} className={cls(d)}><span>{d==="ADVANCE"?"✓":d==="REJECT"?"×":"◷"}</span><div><strong>{c.display_name}</strong><p>{d==="ADVANCE"?"No definitive blocking failure is present and the current gating evidence supports advancement.":d==="REJECT"?"At least one blocking gate has definitive failing evidence; optimization strengths cannot override it.":"Missing, conflicting, or insufficient evidence prevents a defensible accept/reject outcome."}</p></div></article>})}</div></div>
         <div className="command-panel next-actions-panel"><div className="panel-title-row"><div><span className="panel-kicker">Recommended next actions</span><h2>Close the highest-value gaps</h2></div><span className="count-chip">{actions.data?.length??0}</span></div><div className="action-card-list">{(actions.data??[]).slice(0,7).map(a=><article key={a.action_signature}><span className="action-symbol">⌁</span><div><strong>{a.candidate_display_name??"Programme"}: {a.action_type.replaceAll("_"," ")}</strong><p>{a.reason}</p></div><b className={a.priority>=75?"high":a.priority>=40?"medium":"low"}>{a.priority}</b></article>)}{!actions.isLoading&&(actions.data?.length??0)===0&&<div className="panel-empty">No open scientific actions. Reassess the programme if new evidence has arrived.</div>}</div></div>
       </section>
 
