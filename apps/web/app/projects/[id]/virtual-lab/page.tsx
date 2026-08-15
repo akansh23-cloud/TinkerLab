@@ -6,6 +6,7 @@ import {useMutation,useQuery,useQueryClient} from "@tanstack/react-query";
 import {api,CandidateSearchSpace,PredictionModel,PredictionModelVersion,ProjectDetail,VirtualCampaign,VirtualPolicy} from "@/lib/api";
 import {VirtualEvaluationWarning} from "@/components/VirtualEvaluationWarning";
 import {LabGate} from "@/components/ReadinessPanel";
+import {VirtualTestStudio} from "@/components/virtual-lab/VirtualTestStudio";
 
 function targetConditions(v:PredictionModelVersion){
   const ranges=v.applicability_domain?.target_condition_ranges??{}; const out:Record<string,unknown>={};
@@ -38,10 +39,11 @@ export default function VirtualLabPage({params}:{params:Promise<{id:string}>}){
   if(project.isLoading||spaces.isLoading||models.isLoading)return <div className="empty">Loading Virtual Experiment Lab…</div>;
   if(project.error||!project.data)return <div className="empty">Virtual Experiment Lab unavailable: {(project.error as Error)?.message}</div>;
   return <div className="grid">
-    <div className="topline"><div><div className="eyebrow">Virtual Experiment Lab · Phase 5</div><h1>{project.data.name}</h1><div className="muted">Bounded uncertainty-aware multi-objective exploration over the Phase-3 search space.</div></div><div style={{display:"flex",gap:8}}><Link className="btn btn-secondary" href={`/projects/${id}/prediction-lab`}>Prediction Lab</Link><Link className="btn btn-secondary" href={`/projects/${id}`}>Project</Link></div></div>
+    <div className="topline"><div><div className="eyebrow">Virtual Experiment Lab · interactive + evidence-linked</div><h1>{project.data.name}</h1><div className="muted">Industrial test visualization first; bounded computational campaign tooling remains available below.</div></div><div style={{display:"flex",gap:8}}><Link className="btn btn-secondary" href={`/projects/${id}/prediction-lab`}>Prediction Lab</Link><Link className="btn btn-secondary" href={`/projects/${id}`}>Project</Link></div></div>
     <LabGate projectId={id} labKey="virtual_lab"/>
     <VirtualEvaluationWarning/>
-    <div className="card card-pad"><div className="eyebrow">Campaign Builder</div><h2>Pin scientific semantics before optimization</h2><p className="muted">Campaigns pin the replacement specification, search-space checksum, model versions, policy, seed, and bounded budgets. Completed campaigns are not edited in place.</p>
+    <VirtualTestStudio projectId={id}/>
+    <div className="card card-pad"><div className="eyebrow">Advanced computational campaign</div><h2>Pin scientific semantics before optimization</h2><p className="muted">Campaigns pin the replacement specification, search-space checksum, model versions, policy, seed, and bounded budgets. Completed campaigns are not edited in place.</p>
       <div className="grid grid-2">
         <label className="label">Campaign name<input className="input" value={name} onChange={e=>setName(e.target.value)}/></label>
         <label className="label">Policy<select className="select" value={policy} onChange={e=>setPolicy(e.target.value)}>{policies.data?.map(p=><option key={p.key} value={p.key}>{p.key} · v{p.version}</option>)}</select></label>

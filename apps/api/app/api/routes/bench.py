@@ -42,6 +42,7 @@ from app.services.bench.studies import (
     derive_requirements_from_baseline,
     install_reference_library,
 )
+from app.services.showcase import install_flagship_demo
 
 router = APIRouter(tags=["bench"])
 
@@ -148,6 +149,25 @@ def replacement_drivers():
 @router.get("/bench/reference-library")
 def reference_library():
     return [m.as_dict() for m in STARTER_LIBRARY]
+
+
+@router.post("/bench/install-flagship-demo")
+def install_demo_workspace(
+    organisation_id: str | None = Depends(scope_organisation),
+    db: Session = Depends(get_db),
+):
+    """Install the explicit synthetic ADVANCE / REJECT / HOLD showcase.
+
+    This is intentionally separate from deployment bootstrap so production workspaces never receive
+    fabricated outcomes silently. Re-running is safe because every demonstration row has a
+    deterministic id.
+    """
+    if not organisation_id:
+        raise HTTPException(422, "X-Organisation-ID is required to install the flagship demo")
+    try:
+        return install_flagship_demo(db, organisation_id=organisation_id)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
 
 
 # ------------------------------------------------------------------------------------ intake

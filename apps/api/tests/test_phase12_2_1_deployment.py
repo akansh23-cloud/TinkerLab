@@ -52,3 +52,19 @@ def test_bootstrap_repairs_reference_library_and_demo_scope(client):
     finally:
         with engine.begin() as conn:
             conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
+
+
+def test_flagship_demo_installer_is_explicit_and_idempotent(client):
+    org_id = "0b5ec369-282c-57b5-9781-471f818a07c3"
+    first = client.post("/bench/install-flagship-demo", json={}, headers={"X-Organisation-ID": org_id})
+    assert first.status_code == 200
+    body = first.json()
+    assert body["status"] == "ready"
+    assert body["is_demonstration_data"] is True
+    assert body["project_id"]
+    assert body["program_id"]
+
+    second = client.post("/bench/install-flagship-demo", json={}, headers={"X-Organisation-ID": org_id})
+    assert second.status_code == 200
+    assert second.json()["project_id"] == body["project_id"]
+    assert second.json()["program_id"] == body["program_id"]

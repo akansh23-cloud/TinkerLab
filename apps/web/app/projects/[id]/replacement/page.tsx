@@ -44,7 +44,7 @@ const STEP_FOR_STATE: Record<string,number> = {
   paused:0, archived:0,
 };
 
-const TABS = ["portfolio","matrix","gaps","actions","convergence","recommendation","timeline"] as const;
+const TABS = ["story","portfolio","matrix","gaps","actions","convergence","recommendation","timeline"] as const;
 type Tab = typeof TABS[number];
 
 function pct(value:number|undefined|null){ return value==null ? "—" : `${value.toFixed(1)}%`; }
@@ -52,7 +52,7 @@ function pct(value:number|undefined|null){ return value==null ? "—" : `${value
 export default function ReplacementMissionControl({params}:{params:Promise<{id:string}>}){
   const {id} = use(params);
   const qc = useQueryClient();
-  const [tab,setTab] = useState<Tab>("portfolio");
+  const [tab,setTab] = useState<Tab>("story");
   const [programChoice,setProgramChoice] = useState("");
   const [drawerCell,setDrawerCell] = useState<{requirement:string;candidate:string;cell:MatrixCell}|null>(null);
   const [explainFor,setExplainFor] = useState<string>("");
@@ -187,6 +187,119 @@ export default function ReplacementMissionControl({params}:{params:Promise<{id:s
           {name[0].toUpperCase()+name.slice(1)}
         </button>)}
     </nav>
+
+    {/* ---------------------------------------------------------------- story */}
+    {tab==="story" && <section aria-label="Guided decision story">
+      <div className="card card-pad" style={{marginBottom:16}}>
+        <div className="eyebrow">The decision loop</div>
+        <h2>Requirement → evidence → test → verdict → next action</h2>
+        <p className="muted">
+          This is the simplest way to read TinkerLab. A candidate is never accepted because its total
+          score looks good and never rejected because data is merely missing. Each blocking requirement
+          is resolved independently, then the programme decides what evidence to collect next.
+        </p>
+        <div className="grid grid-3" style={{marginTop:14}}>
+          <div className="notice"><strong>PASS</strong><div>Admissible evidence meets the requirement.</div></div>
+          <div className="notice fail"><strong>FAIL / REJECT</strong><div>A blocking requirement is definitively violated.</div></div>
+          <div className="notice"><strong>UNKNOWN / HOLD</strong><div>Evidence is missing or unresolved; identify and run the next useful test.</div></div>
+        </div>
+      </div>
+
+      {header.data?.is_demonstration_data && <div className="card card-pad" style={{marginBottom:16}}>
+        <div className="eyebrow">Flagship demonstration scenario</div>
+        <h2>Replace silicon in a 525 K, 3.3 kV switching application</h2>
+        <p>
+          Three blocking gates must be satisfied: breakdown field ≥ 2.0 MV/cm, band gap ≥ 2.5 eV,
+          and thermal conductivity ≥ 150 W/(m·K). Electron mobility is desirable, but it cannot
+          compensate for failure of a blocking gate.
+        </p>
+        <p className="muted">
+          Candidate names and values in this programme are synthetic. The point of the demo is the
+          decision logic and audit trail, not a claim that a real material has these properties.
+        </p>
+      </div>}
+
+      <div className="grid">
+        {(board.data?.candidates ?? []).map(row=>{
+          const cells=(matrix.data?.rows ?? []).map(req=>({req,cell:req.cells[row.candidate_id]})).filter(x=>!!x.cell);
+          const pass=cells.filter(x=>x.cell.status==="pass");
+          const fail=cells.filter(x=>x.cell.status==="fail");
+          const unresolved=cells.filter(x=>["unknown","inconclusive","conflicting","not_comparable"].includes(x.cell.status));
+          const rec=recommendation.data;
+          const decision=rec?.recommended_candidate_ids.includes(row.candidate_id) ? "ADVANCE" :
+            rec?.rejected_candidate_ids.includes(row.candidate_id) ? "REJECT" :
+            rec?.held_candidate_ids.includes(row.candidate_id) ? "HOLD / TEST" :
+            row.eligibility==="blocked" ? "REJECT" : row.gates_satisfied ? "ADVANCE" : "HOLD / TEST";
+          const action=row.next_action ?? (actions.data ?? []).find(a=>a.candidate_id===row.candidate_id);
+          const candidateGaps=(gaps.data?.by_candidate?.[row.candidate_id] ?? []);
+          return <article className="card" key={row.candidate_id}>
+            <div className="card-pad" style={{borderBottom:"1px solid var(--line)"}}>
+              <div className="topline" style={{marginBottom:0,alignItems:"center"}}>
+                <div>
+                  <div className="eyebrow">Candidate decision</div>
+                  <h2>{row.display_name}</h2>
+                </div>
+                <span className={`badge ${decision==="REJECT"?"fail":decision==="ADVANCE"?"pass":""}`}>{decision}</span>
+              </div>
+              <div className="muted">
+                {pass.length} pass · {fail.length} fail · {unresolved.length} unresolved · {Math.round(row.evidence_coverage*100)}% evidence coverage
+              </div>
+            </div>
+
+            <div className="card-pad">
+              <h3>1. What did we test?</h3>
+              <div className="table-wrap">
+                <table>
+                  <thead><tr><th>Requirement</th><th>Target</th><th>Verdict</th><th>Why</th></tr></thead>
+                  <tbody>{cells.map(({req,cell})=><tr key={req.requirement_id}>
+                    <td><strong>{req.display_name}</strong>{req.is_gating && <div className="muted">BLOCKING GATE</div>}</td>
+                    <td>{req.target_value ?? "objective"} {req.target_unit ?? ""}</td>
+                    <td><MatrixCellBadge status={cell.status}/></td>
+                    <td>{cell.why}</td>
+                  </tr>)}</tbody>
+                </table>
+              </div>
+
+              <h3 style={{marginTop:18}}>2. Why this decision?</h3>
+              {decision==="REJECT" && <div className="notice fail">
+                <strong>Rejected because at least one blocking requirement has a definitive FAIL.</strong>
+                <div>A strong result on another property is not allowed to average this failure away.</div>
+              </div>}
+              {decision==="ADVANCE" && <div className="notice">
+                <strong>Advanced because the blocking gates are satisfied on the admissible evidence currently held.</strong>
+                <div>This is a programme decision, not regulatory qualification or permission to manufacture.</div>
+              </div>}
+              {decision==="HOLD / TEST" && <div className="notice">
+                <strong>Held because the evidence is not sufficient for a defensible pass or fail.</strong>
+                <div>TinkerLab keeps UNKNOWN separate from FAIL and asks for the evidence that can resolve it.</div>
+              </div>}
+
+              <h3 style={{marginTop:18}}>3. What happens next?</h3>
+              {action ? <div className="notice">
+                <strong>{action.action_type.replace(/_/g," ")}</strong>
+                <div>{action.reason}</div>
+                {action.what_it_could_resolve && <div className="muted">Could resolve: {action.what_it_could_resolve}</div>}
+              </div> : <div className="muted">No additional action is currently required by the decision engine.</div>}
+
+              {candidateGaps.length>0 && <details style={{marginTop:12}}>
+                <summary>Show {candidateGaps.length} unresolved evidence gap(s)</summary>
+                <ul>{candidateGaps.map(g=><li key={g.gap_id}>
+                  <strong>{g.display_name ?? g.requirement_key}</strong> — {g.why_unresolved}
+                  <div>Evidence/test that would resolve it: {g.what_would_resolve_it}</div>
+                </li>)}</ul>
+              </details>}
+            </div>
+          </article>;
+        })}
+      </div>
+
+      {recommendation.data && <div className="card card-pad" style={{marginTop:16}}>
+        <div className="eyebrow">Programme conclusion</div>
+        <h2>{recommendation.data.status.replace(/_/g," ").toUpperCase()}</h2>
+        <p>{recommendation.data.rationale}</p>
+        <p className="muted">{recommendation.data.qualification_note}</p>
+      </div>}
+    </section>}
 
     {/* ---------------------------------------------------------------- portfolio */}
     {tab==="portfolio" && <section aria-label="Candidate portfolio">

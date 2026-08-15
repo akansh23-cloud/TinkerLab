@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     materials_project_api_key: str | None = None
     materials_project_api_base_url: str = "https://api.materialsproject.org"
     epa_comptox_api_key: str | None = None
+    # Optional bounded narration layer for the Virtual Experiment Lab.
 
     @property
     def cors_origin_list(self) -> list[str]:

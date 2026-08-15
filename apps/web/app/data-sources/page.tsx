@@ -61,6 +61,26 @@ export default function DataSourcesPage(){
   return <>
     <div className="topline"><div><div className="eyebrow">Phase 12.2 · governed external evidence</div><h1>External data sources</h1><div className="muted">Ingest provider data through licence gates, content-addressed snapshots, conservative identity resolution and explicit method provenance.</div></div></div>
     <div className="notice" style={{marginBottom:18}}>API keys remain server-side. Unreviewed or non-redistributable evidence cannot silently become an exportable dossier. A provider API version is never treated as a dataset release.</div>
+    <div className="card card-pad" style={{marginBottom:18}}>
+      <div className="eyebrow">Demo-friendly real data path</div>
+      <h2>Pull real computational records, then keep physical validation separate</h2>
+      <p className="muted">
+        For the flagship demo, use Materials Project to show that TinkerLab can ingest real, provenance-preserved
+        computational records. The current connector maps band gap, formation energy, energy above hull, density,
+        bulk/shear modulus and magnetization when available. It does not pretend those values are physical tests.
+      </p>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:12}}>
+        <button className="btn btn-secondary" onClick={()=>{setProvider("materials_project");setDatasetKey("mp-sic-screen");setQueryText(JSON.stringify({formula:"SiC",max_records:100},null,2));}}>SiC records</button>
+        <button className="btn btn-secondary" onClick={()=>{setProvider("materials_project");setDatasetKey("mp-gan-screen");setQueryText(JSON.stringify({formula:"GaN",max_records:100},null,2));}}>GaN records</button>
+        <button className="btn btn-secondary" onClick={()=>{setProvider("materials_project");setDatasetKey("mp-aln-screen");setQueryText(JSON.stringify({formula:"AlN",max_records:100},null,2));}}>AlN records</button>
+        <button className="btn btn-secondary" onClick={()=>{setProvider("materials_project");setDatasetKey("mp-carbon-screen");setQueryText(JSON.stringify({formula:"C",band_gap_min:2.0,max_records:100},null,2));}}>Wide-gap carbon records</button>
+      </div>
+      <div className="notice" style={{marginTop:12}}>
+        <strong>Key demo point:</strong> database screening can nominate candidates, but a missing breakdown-field or
+        application-specific thermal result remains an evidence gap. That is where TinkerLab proposes the next test
+        instead of inventing a pass.
+      </div>
+    </div>
     <div className="grid grid-2">
       <div className="card card-pad">
         <h2>Run ingestion</h2>
