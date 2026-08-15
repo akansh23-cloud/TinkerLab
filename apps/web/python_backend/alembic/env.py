@@ -6,11 +6,19 @@ import app.models  # noqa: F401
 from alembic import context
 from app.core.config import get_settings
 from app.db.base import Base
+from app.db.session import normalize_database_url
 
 config = context.config
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
-config.set_main_option("sqlalchemy.url", get_settings().database_url)
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
+
+# Normalize exactly as the application does. Neon and Vercel hand out
+# "postgresql://..." URLs, which SQLAlchemy maps to the psycopg2 dialect —
+# a driver TinkerLab does not ship. Without this, `alembic upgrade head`
+# dies with ModuleNotFoundError: No module named 'psycopg2' while the
+# application itself connects perfectly, which makes the failure look
+# unrelated to the database URL.
+config.set_main_option("sqlalchemy.url", normalize_database_url(get_settings().database_url))
 target_metadata = Base.metadata
 
 def run_migrations_offline():

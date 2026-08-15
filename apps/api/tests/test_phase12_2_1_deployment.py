@@ -15,7 +15,7 @@ def test_single_project_service_mount_exposes_core_api(database):
     with TestClient(service_app) as service_client:
         response = service_client.get("/api/health")
     assert response.status_code == 200
-    assert response.json()["phase"] == "12.2.2"
+    assert response.json()["phase"] == "12.2.4"
 
 
 def test_deployment_status_is_safe_before_version_table(client):

@@ -126,7 +126,7 @@ export default function Dashboard() {
           <strong>The frontend is running, but the TinkerLab API service is not reachable.</strong>
           <div style={{ marginTop: 6 }}>{(deployment.error as Error).message}</div>
           <div style={{ marginTop: 6 }}>
-            On Vercel Phase 12.2.3 uses the hybrid <code>apps/web</code> deployment and serves FastAPI at <code>/api</code> on this same domain.
+            On Vercel Phase 12.2.4 uses the hybrid <code>apps/web</code> deployment and serves FastAPI at <code>/api</code> on this same domain.
           </div>
         </div>
       )}

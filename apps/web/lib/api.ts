@@ -28,13 +28,31 @@ export async function api<T>(path: string, options?: RequestInit): Promise<T> {
     throw new Error(`Cannot reach TinkerLab API at ${API}${path}: ${cause}`);
   }
   if (!response.ok) {
-    let message = `Request failed (${response.status})`;
+    // A bare "Request failed (500)" hides the single most important case: the
+    // platform answered instead of the application. When Vercel's Python function
+    // cannot boot it returns an HTML error page, JSON parsing fails, and the real
+    // cause never reaches the screen. Always fall back to the response text.
+    let message = "";
+    const raw = await response.text().catch(() => "");
     try {
-      const body = await response.json();
+      const body = JSON.parse(raw);
       if (typeof body?.detail === "string") message = body.detail;
       else if (typeof body?.detail?.message === "string") message = body.detail.message;
       else if (typeof body?.error?.message === "string") message = body.error.message;
-    } catch {}
+      else if (typeof body?.error?.hint === "string") message = body.error.hint;
+    } catch {
+      const text = raw.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+      if (text) {
+        message = `The API returned a non-JSON ${response.status} response: ${text.slice(0, 300)}`;
+      }
+    }
+    if (!message) {
+      message =
+        response.status >= 500
+          ? `The API function failed with HTTP ${response.status} and returned no message. ` +
+            `Check the Vercel function logs for /api, then open ${API}/deployment/diagnostics.`
+          : `Request failed (${response.status} ${response.statusText || ""})`.trim();
+    }
     throw new Error(message);
   }
   return response.json();

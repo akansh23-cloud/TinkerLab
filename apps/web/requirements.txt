@@ -1,0 +1,22 @@
+# TinkerLab hybrid Vercel API — runtime dependencies.
+#
+# This file is the AUTHORITATIVE dependency manifest for the Python function at
+# apps/web/api/index.py. It deliberately replaces the previous pyproject.toml.
+#
+# Why: Vercel's Python builder resolves dependencies with uv. When a project
+# contains a pyproject.toml WITHOUT a uv.lock, uv is selected and can complete
+# the build without installing anything (vercel/vercel#14041). The function then
+# boots, fails on `import fastapi`, and Vercel returns a platform-level HTTP 500
+# whose body is HTML — which the frontend can only report as "Request failed (500)".
+#
+# A lone requirements.txt has no such ambiguity. Do not reintroduce a pyproject.toml
+# here unless a committed uv.lock accompanies it.
+fastapi==0.128.2
+pydantic==2.13.4
+pydantic-settings>=2.2,<3
+SQLAlchemy==2.0.50
+alembic==1.18.4
+psycopg[binary]>=3.2,<4
+python-multipart>=0.0.9
+pint>=0.24,<1
+httpx==0.28.1
