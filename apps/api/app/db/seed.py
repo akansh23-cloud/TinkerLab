@@ -9,7 +9,7 @@ from datetime import UTC
 from datetime import date as dt_date
 from datetime import datetime as dt_datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 from sqlalchemy.orm import Session
 
@@ -115,7 +115,10 @@ def sid(name: str) -> str:
     return str(uuid.uuid5(NS, name))
 
 
-def _require[T](value: T | None, label: str) -> T:
+T = TypeVar("T")
+
+
+def _require(value: T | None, label: str) -> T:
     """Seeding is deterministic; a missing row here means the fixture is corrupt, not merely absent."""
     if value is None:
         raise RuntimeError(f"Deterministic seed invariant broken: {label} was not found")

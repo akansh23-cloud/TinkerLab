@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.routes.bench import router as bench_router
+from app.api.routes.deployment import router as deployment_router
 from app.api.routes.experiments import router as experiments_router
 from app.api.routes.experiments_lab import router as experiments_lab_router
 from app.api.routes.external_data import router as external_data_router
@@ -18,6 +19,7 @@ from app.api.routes.simulation import router as simulation_router
 
 api_router = APIRouter()
 api_router.include_router(health_router)
+api_router.include_router(deployment_router)
 api_router.include_router(materials_router)
 api_router.include_router(property_router)
 api_router.include_router(evidence_router)

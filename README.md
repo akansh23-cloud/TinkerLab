@@ -228,6 +228,10 @@ The current Alembic chain runs through:
 
 and the deterministic seed data is then loaded.
 
+## Vercel deployment
+
+Phase 12.2.1 uses one Vercel **Services** project: `apps/web` is the Next.js service and `apps/api` is the FastAPI service. Production browser requests use same-origin `/api`; do not point the frontend at the legacy Phase-9 API. See `VERCEL_DEPLOYMENT.md` and `PHASE_12_2_1_FETCH_FIX.md`.
+
 ## Local development
 
 ### API

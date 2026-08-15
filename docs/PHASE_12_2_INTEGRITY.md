@@ -84,7 +84,7 @@ The connector uses bounded/paginated summary queries, preserves the Materials Pr
 
 ## Deployment metadata
 
-Runtime and deployment metadata now report Phase 12.2 / API `0.12.2`. The Vercel example no longer points the web app at the old Phase 9.1 API; `NEXT_PUBLIC_API_BASE_URL` must be filled with the deployed Phase 12.2 API origin.
+Phase 12.2.1 supersedes the split-deployment guidance below. Production Vercel now uses one Services project and same-origin `/api`; `NEXT_PUBLIC_API_BASE_URL` is not required unless `NEXT_PUBLIC_API_MODE=external` is explicitly selected. See `VERCEL_DEPLOYMENT.md`.
 
 ## Verification performed for this release
 

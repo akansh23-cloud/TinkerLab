@@ -1,19 +1,40 @@
-export const API = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+const EXTERNAL_API = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "");
+const USE_EXTERNAL_API = process.env.NEXT_PUBLIC_API_MODE === "external";
+
+// Production is same-origin by default. A stale NEXT_PUBLIC_API_BASE_URL can therefore no longer
+// send a Phase 12.2 frontend to a Phase 9/11 backend. Explicit external mode remains available
+// for local development or a deliberately split deployment.
+export const API = USE_EXTERNAL_API && EXTERNAL_API
+  ? EXTERNAL_API
+  : process.env.NODE_ENV === "production"
+    ? "/api"
+    : EXTERNAL_API ?? "http://localhost:8000";
 const ORG = process.env.NEXT_PUBLIC_ORGANISATION_ID;
 
 export async function api<T>(path: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${API}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(ORG ? {"X-Organisation-ID": ORG} : {}),
-      ...(options?.headers ?? {}),
-    },
-    cache: "no-store",
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API}${path}`, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...(ORG ? {"X-Organisation-ID": ORG} : {}),
+        ...(options?.headers ?? {}),
+      },
+      cache: "no-store",
+    });
+  } catch (error) {
+    const cause = error instanceof Error ? error.message : "network error";
+    throw new Error(`Cannot reach TinkerLab API at ${API}${path}: ${cause}`);
+  }
   if (!response.ok) {
     let message = `Request failed (${response.status})`;
-    try { const body = await response.json(); message = body.detail ?? body.error?.message ?? message; } catch {}
+    try {
+      const body = await response.json();
+      if (typeof body?.detail === "string") message = body.detail;
+      else if (typeof body?.detail?.message === "string") message = body.detail.message;
+      else if (typeof body?.error?.message === "string") message = body.error.message;
+    } catch {}
     throw new Error(message);
   }
   return response.json();

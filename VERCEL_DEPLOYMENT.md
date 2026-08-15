@@ -1,57 +1,92 @@
-# TinkerLab Phase 12.2 — Vercel deployment
+# TinkerLab Phase 12.2.1 — Vercel single-project deployment
 
-Use **two Vercel projects from the same GitHub repository**.
+Phase 12.2.1 deploys the Next.js UI and FastAPI service from **one Vercel project** and one domain.
+The browser calls `/api/...` on the same origin. This removes the stale Phase-9 API URL/CORS failure
+mode that previously appeared as `Failed to fetch`.
 
-## Web project (`cloud14/tinker-lab`)
+## One-time Vercel project settings
 
-- Git repository: `akansh23-cloud/TinkerLab`
-- Production branch: `develop` (current project connection)
-- Root Directory: `apps/web`
-- Framework: Next.js
-- Install command: `npm ci`
-- Build command: `npm run build`
-- Node.js: 22.x is preferred to match the repository Dockerfile
+Use the existing **tinker-lab** project.
 
-Environment variables:
+1. **Root Directory:** repository root (`./`, not `apps/web`).
+2. **Framework Preset:** `Services`.
+3. Deploy the `develop` branch after these settings are saved.
 
-- `NEXT_PUBLIC_API_BASE_URL=<the deployed Phase 12.2 API origin>`
+The repository-root `vercel.json` defines two services:
+
+- `web` → `apps/web`
+- `api` → `apps/api`, entrypoint `service:app`
+
+Traffic routing:
+
+- `/api/*` → FastAPI service
+- everything else → Next.js
+
+The FastAPI wrapper mounts the existing application at `/api`, so the public health check is:
+
+`GET /api/health`
+
+## Environment variables — same `tinker-lab` project
+
+Required:
+
+- `DATABASE_URL`
 - `NEXT_PUBLIC_ORGANISATION_ID=0b5ec369-282c-57b5-9781-471f818a07c3`
 
-## API project (Phase 12.2 deployment)
+For Materials Project:
 
-- Git repository: `akansh23-cloud/TinkerLab`
-- Root Directory: `apps/api`
-- Framework: FastAPI
-- Python: 3.12 (`.python-version` is included)
-- Vercel entrypoint: `apps/api/app.py`
+- `MATERIALS_PROJECT_API_KEY`
+- `MATERIALS_PROJECT_API_BASE_URL=https://api.materialsproject.org`
 
-Set all server-side variables from `.env.vercel.example` **except** the `NEXT_PUBLIC_*` variables.
+Optional:
 
-## Database bootstrap
+- `EPA_COMPTOX_API_KEY`
+- `LOG_LEVEL=INFO`
+- `ENVIRONMENT=production`
 
-The production database must be migrated through Alembic revision `0013_phase11` before using data-backed routes.
-Run once from `apps/api` in an environment that has the production `DATABASE_URL`:
+### Remove stale split-deployment variables
 
-```bash
-alembic upgrade head
-python -m app.db.seed
-```
+For this single-project deployment, remove or ignore:
 
-The seed is deterministic/idempotent and supplies the demo organisation referenced by
-`NEXT_PUBLIC_ORGANISATION_ID`.
+- `NEXT_PUBLIC_API_BASE_URL`
+- `API_BASE_URL`
+- duplicate `mp_api`
 
-## Important
+Phase 12.2.1 ignores `NEXT_PUBLIC_API_BASE_URL` in production unless
+`NEXT_PUBLIC_API_MODE=external` is explicitly set. This prevents an old Phase-9 backend URL from
+silently hijacking a newer frontend.
 
-Do not set the Vercel web project Root Directory to the repository root. The repository is a
-monorepo and there is no root Next.js application. A repo-root deployment can build as an
-"Other" project and still return `404`, which is what the previous deployment did.
+## First deployment / empty database
 
-Do not expose `DATABASE_URL`, `MATERIALS_PROJECT_API_KEY`, or `EPA_COMPTOX_API_KEY` as
-`NEXT_PUBLIC_*` variables.
+The dashboard first calls:
 
+`GET /api/deployment/status`
 
-## Materials Project API
+If the database is empty or incomplete it makes one idempotent call to:
 
-Set `MATERIALS_PROJECT_API_KEY` on the **API Vercel project only**. The connector uses the Materials Project summary endpoint through the server and stores the Materials Project material id, dataset snapshot metadata, source record and computed-property provenance. Keep `MATERIALS_PROJECT_API_BASE_URL=https://api.materialsproject.org` unless you intentionally use a compatible endpoint.
+`POST /api/deployment/bootstrap`
 
-After deployment, `GET /external-data/providers` must report `materials_project.configured: true` before running an ingestion. Use `POST /external-data/ingest` with `provider: "materials_project"`, a bounded query, and your organisation header.
+Bootstrap performs only deployment prerequisites:
+
+1. Alembic upgrade to the repository head.
+2. Create the deterministic demo organisation/user if missing.
+3. Install the public, screening-only reference library if missing.
+
+It does **not** create fake replacement projects or silently ingest external providers.
+Postgres bootstrap is serialized with an advisory lock so concurrent first loads do not race.
+
+After bootstrap the dashboard should show 30+ reference materials even before any external ingestion.
+
+## Verification
+
+Check these URLs on the deployed `tinker-lab` domain:
+
+- `/api/health`
+- `/api/deployment/status`
+- `/api/external-data/providers`
+
+Expected provider response: `materials_project.configured` is `true` when
+`MATERIALS_PROJECT_API_KEY` is present in the Vercel environment used for the deployment.
+
+Then open **External data sources** and run the default Materials Project SiC query. Provider data is
+never fetched merely because an API key exists; ingestion remains an explicit governed action.

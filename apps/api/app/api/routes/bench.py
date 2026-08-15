@@ -235,9 +235,8 @@ def install_library(
     anybody's proprietary dataset, and scoping them privately would leave every other
     organisation on the deployment looking at an empty explorer again.
     """
-    owner = (payload.organisation_id if payload else None) or organisation_id
-    if owner and db.get(Organisation, owner) is None:
-        raise HTTPException(422, "Organisation not found")
+    # The starter library is deployment-global, public screening data. Installing it does not
+    # create or mutate tenant-owned records, so a missing tenant scope must not block bootstrap.
     return install_reference_library(db, organisation_id=None)
 
 
