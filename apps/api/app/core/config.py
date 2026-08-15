@@ -11,9 +11,11 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000"
     log_level: str = "INFO"
     app_name: str = "TinkerLab API"
-    api_version: str = "0.11.1"
+    api_version: str = "0.12.2"
     environment: str = Field(default="development")
+    # Server-side only. Never expose the Materials Project key through NEXT_PUBLIC_* variables.
     materials_project_api_key: str | None = None
+    materials_project_api_base_url: str = "https://api.materialsproject.org"
     epa_comptox_api_key: str | None = None
 
     @property

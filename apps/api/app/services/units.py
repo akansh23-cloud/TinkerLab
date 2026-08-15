@@ -133,6 +133,59 @@ UNITS: dict[str, UnitSpec] = {
     "megatonne": UnitSpec("mass", 1e9, 0.0, "tonne"),
     "USD/tonne": UnitSpec("cost_per_mass", 1e-3, 0.0, "USD/kg"),
     "USD/g": UnitSpec("cost_per_mass", 1000.0, 0.0, "USD/kg"),
+
+    # --- Phase 12: engineering datasheet units --------------------------------------------------
+    # Every unit below appears on a real supplier datasheet or a real ISO/ASTM test report. They
+    # are what an engineer types when transcribing a datasheet, so refusing them pushed users into
+    # inventing a unit the system did accept — which is how silently wrong numbers get stored.
+    # All are declared INTERNAL_ONLY below: pint parses several of them as unrelated quantities
+    # (`d` as day vs. deuteron-adjacent contexts, `V` fine but `HV` not, `wk` not at all), and a
+    # datasheet transcription is exactly where a silent misparse would be most expensive.
+    #
+    # Notched impact strength. ISO 180 reports per unit width, ISO 179 per unit area; they are not
+    # interconvertible without specimen geometry, so they are deliberately distinct dimensions.
+    "J/m": UnitSpec("impact_energy_per_width", 1.0, 0.0, "J/m"),
+    "ft*lb/in": UnitSpec("impact_energy_per_width", 53.3787, 0.0, "J/m"),
+    "kJ/m^2": UnitSpec("impact_energy_per_area", 1.0, 0.0, "kJ/m^2"),
+    "J/m^2": UnitSpec("impact_energy_per_area", 1e-3, 0.0, "kJ/m^2"),
+    # Linear-elastic fracture toughness (ASTM E399 / ISO 13586).
+    "MPa*m^0.5": UnitSpec("fracture_toughness", 1.0, 0.0, "MPa*m^0.5"),
+    "ksi*in^0.5": UnitSpec("fracture_toughness", 1.0988, 0.0, "MPa*m^0.5"),
+    # Melt flow (ISO 1133). Mass rate and volume rate are separate quantities; converting between
+    # them requires melt density at the test condition, which is not part of the observation.
+    "g/10min": UnitSpec("melt_flow_rate", 1.0, 0.0, "g/10min"),
+    "cm^3/10min": UnitSpec("melt_volume_rate", 1.0, 0.0, "cm^3/10min"),
+    # Electrical. Surface resistivity is reported in ohm (per square); volume resistivity reuses
+    # the existing `resistivity` dimension declared above.
+    "ohm": UnitSpec("resistance", 1.0, 0.0, "ohm"),
+    "Mohm": UnitSpec("resistance", 1e6, 0.0, "ohm"),
+    "Gohm": UnitSpec("resistance", 1e9, 0.0, "ohm"),
+    "V": UnitSpec("voltage", 1.0, 0.0, "V"),
+    "kV": UnitSpec("voltage", 1e3, 0.0, "V"),
+    # Service and supply durations (salt-spray hours, lead time, shelf life). Kept dimensionally
+    # separate from the femtosecond-scale `time` dimension used by molecular dynamics so a lead
+    # time can never be converted into a simulation timestep.
+    "h": UnitSpec("duration", 1.0, 0.0, "h"),
+    "d": UnitSpec("duration", 24.0, 0.0, "h"),
+    "wk": UnitSpec("duration", 168.0, 0.0, "h"),
+    "month": UnitSpec("duration", 730.0, 0.0, "h"),
+    "yr": UnitSpec("duration", 8760.0, 0.0, "h"),
+    # Commercial.
+    "USD/m^3": UnitSpec("cost_per_volume", 1.0, 0.0, "USD/m^3"),
+    "USD/L": UnitSpec("cost_per_volume", 1000.0, 0.0, "USD/m^3"),
+    "EUR/kg": UnitSpec("cost_per_mass_eur", 1.0, 0.0, "EUR/kg"),
+    "INR/kg": UnitSpec("cost_per_mass_inr", 1.0, 0.0, "INR/kg"),
+    # Embodied energy, the other half of a cradle-to-gate footprint claim.
+    "MJ/kg": UnitSpec("embodied_energy", 1.0, 0.0, "MJ/kg"),
+    "kWh/kg": UnitSpec("embodied_energy", 3.6, 0.0, "MJ/kg"),
+    # Engineering lengths, for thickness-dependent datasheet values.
+    "mm": UnitSpec("engineering_length", 1.0, 0.0, "mm"),
+    "cm": UnitSpec("engineering_length", 10.0, 0.0, "mm"),
+    "um": UnitSpec("engineering_length", 1e-3, 0.0, "mm"),
+    "in": UnitSpec("engineering_length", 25.4, 0.0, "mm"),
+    # Permeability, for barrier films and packaging.
+    "cm^3/(m^2*d*bar)": UnitSpec("gas_permeability", 1.0, 0.0, "cm^3/(m^2*d*bar)"),
+    "g/(m^2*d)": UnitSpec("water_vapour_transmission", 1.0, 0.0, "g/(m^2*d)"),
 }
 
 PROPERTY_DIMENSIONS: dict[str, str] = {
@@ -175,6 +228,56 @@ PROPERTY_DIMENSIONS: dict[str, str] = {
     "poisson_ratio": "dimensionless",
     "concentration_limit": "mass_fraction",
     "annual_production": "mass",
+    # --- Phase 12 engineering property vocabulary ----------------------------------------------
+    # Binding a key to a dimension here is what stops a flexural modulus in GPa being stored
+    # against a key whose canonical unit is MPa-with-a-different-meaning. Every key the intake
+    # catalogue can write is registered, so no catalogue property reaches the database unchecked.
+    "tensile_modulus": "pressure",
+    "flexural_strength": "pressure",
+    "flexural_modulus": "pressure",
+    "compressive_strength": "pressure",
+    "shear_strength": "pressure",
+    "fatigue_strength_1e7": "pressure",
+    "creep_modulus_1000h": "pressure",
+    "elongation_at_break": "percent",
+    "izod_impact_notched": "impact_energy_per_width",
+    "charpy_impact_notched": "impact_energy_per_area",
+    "fracture_toughness_k1c": "fracture_toughness",
+    "hardness_shore_d": "dimensionless",
+    "hardness_rockwell_r": "dimensionless",
+    "hardness_vickers": "dimensionless",
+    "heat_deflection_temperature_1_8mpa": "temperature",
+    "heat_deflection_temperature_0_45mpa": "temperature",
+    "vicat_softening_temperature": "temperature",
+    "continuous_service_temperature": "temperature",
+    "peak_service_temperature": "temperature",
+    "melting_temperature": "temperature",
+    "oxidation_onset_temperature": "temperature",
+    "processing_melt_temperature": "temperature",
+    "coefficient_thermal_expansion": "thermal_expansion",
+    "volume_resistivity": "resistivity",
+    "surface_resistivity": "resistance",
+    "dielectric_strength": "electric_field",
+    "dissipation_factor": "dimensionless",
+    "comparative_tracking_index": "voltage",
+    "water_absorption_24h": "percent",
+    "moisture_absorption_equilibrium": "percent",
+    "limiting_oxygen_index": "percent",
+    "salt_spray_resistance": "duration",
+    "uv_stability_rating": "dimensionless",
+    "chemical_resistance_rating": "dimensionless",
+    "melt_flow_index": "melt_flow_rate",
+    "mould_shrinkage": "percent",
+    "cost_per_volume": "cost_per_volume",
+    "lead_time": "duration",
+    "supplier_count": "dimensionless",
+    "price_volatility_index": "dimensionless",
+    "embodied_energy": "embodied_energy",
+    "recycled_content": "percent",
+    "biobased_content": "percent",
+    "recyclability_rating": "dimensionless",
+    "oxygen_transmission_rate": "gas_permeability",
+    "water_vapour_transmission_rate": "water_vapour_transmission",
 }
 
 
@@ -240,6 +343,16 @@ INTERNAL_ONLY_UNITS: frozenset[str] = frozenset({
     "mAh/g", "Ah/kg", "Wh/kg", "Wh/L",
     "bohr_magneton", "mu_B",
     "kgCO2e/kg",
+    # Phase 12 datasheet units. See the rationale block in UNITS above.
+    "J/m", "ft*lb/in", "kJ/m^2", "J/m^2",
+    "MPa*m^0.5", "ksi*in^0.5",
+    "g/10min", "cm^3/10min",
+    "ohm", "Mohm", "Gohm", "V", "kV",
+    "h", "d", "wk", "month", "yr",
+    "USD/m^3", "USD/L", "EUR/kg", "INR/kg",
+    "MJ/kg", "kWh/kg",
+    "mm", "cm", "um", "in",
+    "cm^3/(m^2*d*bar)", "g/(m^2*d)",
 })
 
 

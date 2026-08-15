@@ -1,6 +1,50 @@
-# TinkerLab — Material Replacement Operating System (through Phase 11.1)
+# TinkerLab — Material Replacement Operating System (through Phase 12.2)
 
-TinkerLab is an evidence-first operating system for material replacement studies. The current repository implements the scientific workflow through **Phase 11.1 — External Data Integrity & Scientific Provenance Hardening**.
+## Phase 12 — Intake Bench (usability)
+
+Phase 12 makes the scientific core reachable. Before it, materials could not be created from any
+screen, and every lab was gated on a candidate search space that no screen could produce — so a
+newly created study reached a permanently disabled Virtual Experiment Lab with nothing explaining
+why. See `docs/PHASE_12_INTAKE_BENCH.md`.
+
+- **Record a material** at `/materials/new` — identity, provenance grade, composition and properties
+  grouped by engineering domain, with the test standard shown for each property.
+- **Start a study** at `/studies/new` — three steps, an application preset with realistic
+  requirements, and a search space derived from the baseline and activated automatically.
+- **Readiness** on every project — per-lab preconditions with an inline fix button for each blocker.
+- **Reference library** — 35 real engineering grades, installable from the dashboard, recorded as
+  handbook-typical rather than measured.
+
+## Phase 12.1 — Charts
+
+Six graphics: an Ashby material-selection chart with material-index guide lines (`/explore`), and a
+decision matrix, requirement margins, property deltas, evidence mix and search-space bands on each
+study. See `docs/PHASE_12_1_CHARTS.md`. All hand-rolled SVG so that UNKNOWN can be drawn as what it
+is rather than as a zero.
+
+- **Ashby property-space chart** at `/explore` — log axes, materials by family, with material index
+  guide lines (σ/ρ, σ^⅔/ρ, E^½/ρ…) so selection follows the loading mode rather than a raw property.
+- **Decision matrix, margins, deltas and evidence mix** on each study's Charts tab.
+- **Search space bands** in the Candidate Lab.
+
+UNKNOWN is never drawn as zero, missing materials are named rather than dropped, margins are
+computed server-side with the real unit registry, and every status carries a glyph as well as a
+colour.
+
+Deployment note: set `NEXT_PUBLIC_ORGANISATION_ID` in the web project. Phase-3+ endpoints are
+organisation-scoped and return 404 without it, which looks exactly like an empty database.
+
+
+## Phase 12.2 — Scientific Integrity & Tenant Hardening
+
+Phase 12.2 hardens the intake and chart layers without introducing a second verdict engine. It adds
+transactional study validation, semantic regulatory booleans, provenance-aware automatic derivation,
+read-only shared reference materials, tenant-scoped project/chart endpoints, evidence-safe chart
+encodings and canonical-unit feasible regions. Materials Project ingestion remains governed and
+server-side, with the API key configured only on the API deployment. See
+`docs/PHASE_12_2_INTEGRITY.md`.
+
+TinkerLab is an evidence-first operating system for material replacement studies. The current repository implements the scientific workflow through **Phase 12.2 — Scientific Integrity, Evidence Semantics & Tenant Hardening**, including the Phase 12 intake bench and Phase 12.1 decision charts.
 
 The platform keeps scientific and industrial claim classes separate:
 
@@ -28,6 +72,9 @@ Candidate hypotheses remain distinct from canonical materials. Unknown, insuffic
 | 10 | **Implemented** | Closed-loop replacement decision OS, convergence, immutable recommendations and technical dossier |
 | 11 | Implemented + 11.1 hardening | Governed external scientific/regulatory ingestion with dataset snapshots and licence provenance |
 | 11.1 | **Implemented in this package** | Scientific identity, stoichiometry, content checksums, pagination, export licensing and external-data product workflow hardening |
+| 12 | **Implemented** | Material intake, provenance grades, study bootstrap, baseline-derived requirements, search-space derivation and readiness |
+| 12.1 | **Implemented** | Ashby/property-space, decision matrix, margins, property deltas, provenance/evidence mix and search-space charts |
+| 12.2 | **Implemented in this package** | Scientific-integrity validation, semantic regulatory booleans, provenance-aware derivation/visualisation, reference-library immutability and tenant-scoped charts/projects |
 
 ## Phase 11 / 11.1 external data ingestion
 
@@ -214,7 +261,7 @@ The Phase-6 LAMMPS and Quantum ESPRESSO adapters refuse honestly when required b
 
 ## Verification
 
-Validated for Phase 11.1: **444 backend tests passed; 6 solver-runtime tests were skipped because the external LAMMPS/QE binaries were unavailable.**
+Phase 12.2 validation is documented in `PHASE_12_2_INTEGRITY.md`; test counts should be taken from CI rather than maintained as a stale hand-written total here.
 
 Run the current repository gate from `apps/api`:
 

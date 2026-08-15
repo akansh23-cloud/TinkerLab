@@ -5,6 +5,7 @@ import {useRouter} from "next/navigation";
 import {useMutation,useQuery,useQueryClient} from "@tanstack/react-query";
 import {api,CandidateSearchSpace,PredictionModel,PredictionModelVersion,ProjectDetail,VirtualCampaign,VirtualPolicy} from "@/lib/api";
 import {VirtualEvaluationWarning} from "@/components/VirtualEvaluationWarning";
+import {LabGate} from "@/components/ReadinessPanel";
 
 function targetConditions(v:PredictionModelVersion){
   const ranges=v.applicability_domain?.target_condition_ranges??{}; const out:Record<string,unknown>={};
@@ -38,6 +39,7 @@ export default function VirtualLabPage({params}:{params:Promise<{id:string}>}){
   if(project.error||!project.data)return <div className="empty">Virtual Experiment Lab unavailable: {(project.error as Error)?.message}</div>;
   return <div className="grid">
     <div className="topline"><div><div className="eyebrow">Virtual Experiment Lab · Phase 5</div><h1>{project.data.name}</h1><div className="muted">Bounded uncertainty-aware multi-objective exploration over the Phase-3 search space.</div></div><div style={{display:"flex",gap:8}}><Link className="btn btn-secondary" href={`/projects/${id}/prediction-lab`}>Prediction Lab</Link><Link className="btn btn-secondary" href={`/projects/${id}`}>Project</Link></div></div>
+    <LabGate projectId={id} labKey="virtual_lab"/>
     <VirtualEvaluationWarning/>
     <div className="card card-pad"><div className="eyebrow">Campaign Builder</div><h2>Pin scientific semantics before optimization</h2><p className="muted">Campaigns pin the replacement specification, search-space checksum, model versions, policy, seed, and bounded budgets. Completed campaigns are not edited in place.</p>
       <div className="grid grid-2">
@@ -54,7 +56,7 @@ export default function VirtualLabPage({params}:{params:Promise<{id:string}>}){
         <label className="label">Parents / iteration<input className="input" type="number" min={0} max={100} value={parents} onChange={e=>setParents(Number(e.target.value))}/></label>
         <div className="notice"><strong>Search space</strong><div>{activeSpace?`v${activeSpace.version} · ${activeSpace.material_family}`:"No active search space"}</div><div className="muted"><code>{activeSpace?.checksum??"—"}</code></div></div>
       </div>
-      <div style={{marginTop:14}}><button className="btn" disabled={create.isPending||!selectedA||!activeSpace} onClick={()=>create.mutate()}>Create draft campaign</button>{create.error&&<div className="notice fail" style={{marginTop:10}}>{(create.error as Error).message}</div>}</div>
+      <div style={{marginTop:14}}><button className="btn" disabled={create.isPending||!selectedA||!activeSpace} onClick={()=>create.mutate()}>Create draft campaign</button>{!activeSpace&&<span className="muted" style={{marginLeft:10}}>Needs an active search space — see the panel above.</span>}{activeSpace&&!selectedA&&<span className="muted" style={{marginLeft:10}}>Needs at least one approved prediction model.</span>}{create.error&&<div className="notice fail" style={{marginTop:10}}>{(create.error as Error).message}</div>}</div>
     </div>
     <div className="card"><div className="card-pad"><div className="eyebrow">Campaign History</div><h2>Auditable virtual campaigns</h2></div><div className="table-wrap"><table><thead><tr><th>Campaign</th><th>Policy</th><th>Status</th><th>Budgets</th><th>Stop reason</th><th>Result checksum</th></tr></thead><tbody>{campaigns.data?.map(c=><tr key={c.id}><td><Link href={`/virtual-campaigns/${c.id}`}><strong>{c.name}</strong></Link><div className="muted">seed {c.random_seed}</div></td><td>{c.policy_key} · v{c.policy_version}</td><td><span className="badge">{c.status}</span></td><td>{c.max_iterations} iterations · {c.max_total_new_candidates} new</td><td>{c.stop_reason??"—"}</td><td><code>{c.result_checksum?.slice(0,14)??"—"}…</code></td></tr>)}</tbody></table></div></div>
     <div className="card card-pad"><div className="eyebrow">Policy semantics</div><div className="grid grid-3">{policies.data?.map(p=><div className="notice" key={p.key}><strong>{p.key}</strong><div className="muted">{p.uncertainty_semantics}</div><div className="muted">UNKNOWN: {p.unknown_handling}</div></div>)}</div></div>

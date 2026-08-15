@@ -11,7 +11,7 @@ from app.main import app
 def deployment_root() -> dict[str, str]:
     return {
         "service": "TinkerLab API",
-        "version": "0.11.1",
+        "version": "0.12.2",
         "health": "/health",
         "docs": "/docs",
     }

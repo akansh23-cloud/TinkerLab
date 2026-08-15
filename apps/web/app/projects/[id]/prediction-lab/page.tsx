@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, CandidatePage, Evaluation, PredictionModel, PredictionModelVersion, PredictionPreview, PredictionResultPage, PredictionRun, PredictionTargetRequest, ProjectDetail } from "@/lib/api";
 import { DemoModelWarning } from "@/components/DemoModelWarning";
+import {LabGate} from "@/components/ReadinessPanel";
 import { PredictionInterval } from "@/components/PredictionInterval";
 import { PredictionOriginBadge } from "@/components/PredictionOriginBadge";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -32,6 +33,7 @@ export default function PredictionLabPage({params}:{params:Promise<{id:string}>}
   if(project.error||!project.data) return <div className="empty">Prediction Lab unavailable: {(project.error as Error)?.message}</div>;
   return <div className="grid">
     <div className="topline"><div><div className="eyebrow">Prediction Lab · Phase 4</div><h1>{project.data.name}</h1><div className="muted">Model-backed property estimates with applicability and uncertainty. Predictions remain separate from scientific observations.</div></div><div style={{display:"flex",gap:8}}><Link className="btn btn-secondary" href={`/projects/${id}/candidate-lab`}>Candidate Lab</Link><Link className="btn btn-secondary" href={`/projects/${id}`}>Project</Link></div></div>
+    <LabGate projectId={id} labKey="prediction_lab"/>
     <div className="notice"><strong>Prediction is not measurement.</strong><div className="muted">Known evidence remains authoritative and visible. A model result is used in comparison only when you explicitly select a prediction run.</div></div>
     <div className="card card-pad"><div className="eyebrow">Model registry</div><h2>Choose an approved immutable model version</h2><div className="grid grid-2">
       <label>Model<select value={selectedModelId} onChange={e=>{setModelId(e.target.value);setVersionId("");setPreview(null)}}>{models.data?.map(m=><option key={m.id} value={m.id}>{m.display_name} · {m.status}</option>)}</select></label>

@@ -63,6 +63,7 @@ def _observation_dict(obs: MaterialPropertyObservation, definition: MaterialProp
         "confidence": obs.confidence,
         "condition_set_id": obs.condition_set_id,
         "evidence_type": obs.evidence.evidence_type,
+        "source_quality": obs.evidence.source_quality,
         "evidence_title": obs.evidence.title,
         "status": obs.status,
         "curator_preferred": obs.curator_preferred,

@@ -16,7 +16,7 @@ logger = logging.getLogger("tinkerlab")
 app = FastAPI(
     title="TinkerLab Material Replacement OS",
     version=settings.api_version,
-    description="TinkerLab Material Replacement OS through Phase 11.1: evidence, bounded candidates, prediction, simulation, industrial viability, state-aware reasoning, physical validation, deterministic replacement decisions, and licence-aware external scientific data ingestion.",
+    description="TinkerLab Material Replacement OS through Phase 12.2: evidence, bounded candidates, prediction, simulation, industrial viability, state-aware reasoning, physical validation, deterministic replacement decisions, and licence-aware external scientific data ingestion.",
 )
 app.add_middleware(
     CORSMiddleware,

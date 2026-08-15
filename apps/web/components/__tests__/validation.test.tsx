@@ -16,8 +16,19 @@ describe("Phase 9 validation disclosure components", () => {
   });
 
   it("says when measurements conflict instead of picking one", () => {
+    render(<ValidationStateBadge state="conflicting_experiments"/>);
+    expect(screen.getByText(/CONFLICTING EXPERIMENTS/)).toBeTruthy();
+  });
+
+  // These two states are not synonyms and must not be rendered as if they were. "Inconclusive"
+  // means the evidence does not settle the question; "conflicting experiments" means measurements
+  // actively disagree. Labelling the former as a conflict would assert a disagreement that was
+  // never observed — the same class of overstatement the badge exists to prevent.
+  it("does not describe insufficient evidence as a conflict", () => {
     render(<ValidationStateBadge state="inconclusive"/>);
-    expect(screen.getByText(/MEASUREMENTS CONFLICT/)).toBeTruthy();
+    const text = screen.getByTestId("validation-inconclusive").textContent ?? "";
+    expect(text).toBe("INCONCLUSIVE");
+    expect(text).not.toContain("CONFLICT");
   });
 
   it("marks an untraceable measurement as not evidence", () => {

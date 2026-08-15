@@ -64,7 +64,8 @@ def evaluate_constraint(db: Session, material: Material, c, definitions: dict[st
         "constraint_id": c.id, "property_key": c.property_key, "status": "UNKNOWN",
         "observed_value": None, "observed_unit": None, "canonical_value": None,
         "canonical_unit": definition.canonical_unit if definition else None,
-        "target": {}, "evidence_id": None, "confidence": None, "unknown_reason": None,
+        "target": {}, "evidence_id": None, "confidence": None, "evidence_type": None,
+        "source_quality": None, "unknown_reason": None,
         "selected_observation_id": None, "selection_rationale": [], "applicability": None,
         "alternatives_count": 0, "conflict": False, **_base_prediction_fields("none"),
     }
@@ -89,6 +90,7 @@ def evaluate_constraint(db: Session, material: Material, c, definitions: dict[st
     common = {
         "constraint_id": c.id, "property_key": c.property_key, "target": target,
         "evidence_id": selected.get("evidence_id"), "confidence": selected.get("confidence"),
+        "evidence_type": selected.get("evidence_type"), "source_quality": selected.get("source_quality"),
         "selected_observation_id": selected["observation_id"], "selection_rationale": selection["rationale"],
         "applicability": selected["applicability"], "alternatives_count": len(selection["alternatives"]),
         "conflict": bool(selection["conflict"] or c.property_key in (conflict_keys or set())), "unknown_reason": None,

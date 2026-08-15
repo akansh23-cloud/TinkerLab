@@ -8,6 +8,8 @@ import {
 } from "@/lib/api";
 import { GenerationRunSummary } from "@/components/GenerationRunSummary";
 import { HypothesisWarning } from "@/components/HypothesisWarning";
+import { LabGate } from "@/components/ReadinessPanel";
+import { SearchSpaceBands } from "@/components/charts/SearchSpaceBands";
 
 export default function CandidateLabPage({params}:{params:Promise<{id:string}>}) {
   const {id}=use(params); const qc=useQueryClient();
@@ -28,13 +30,14 @@ export default function CandidateLabPage({params}:{params:Promise<{id:string}>})
   if(project.error||!project.data) return <div className="empty">Candidate Lab unavailable: {(project.error as Error)?.message}</div>;
   return <div className="grid">
     <div className="topline"><div><div className="eyebrow">Candidate Lab · Phase 5</div><h1>{project.data.name}</h1><div className="muted">Baseline: <Link href={`/materials/${project.data.baseline_material.id}`}>{project.data.baseline_material.display_name}</Link></div></div><div style={{display:"flex",gap:8}}><Link className="btn" href={`/projects/${id}/virtual-lab`}>Virtual Experiment Lab</Link><Link className="btn btn-secondary" href={`/projects/${id}/prediction-lab`}>Prediction Lab</Link><Link className="btn btn-secondary" href={`/projects/${id}/validation`}>Validation</Link><Link className="btn btn-secondary" href={`/projects/${id}`}>Back to project</Link></div></div>
+    <LabGate projectId={id} labKey="candidate_lab"/>
     <HypothesisWarning/>
     <div className="grid grid-2">
       <div className="card card-pad"><h2>Generation inputs</h2><div><span className="kicker">Replacement specification</span><p><code>{spec.data?.checksum ?? "…"}</code></p></div><div><span className="kicker">Active search space</span><p>{active?`v${active.version} · ${active.checksum.slice(0,18)}…`:"No search space"}</p></div><div><span className="kicker">Candidate budget</span><p>{active?.candidate_budget ?? "—"} configured · hard local maximum 1,000</p></div></div>
       <div className="card card-pad"><h2>Candidate inventory</h2><p>{candidates.data?.total ?? 0} total project candidates</p><p className="muted">Known materials keep Phase-2 evidence. Hypotheses carry only proposed structure/process data, fingerprint and lineage.</p></div>
     </div>
 
-    {active && <div className="card"><div className="card-pad"><div className="topline"><div><div className="eyebrow">Search Space Builder</div><h2>Version {active.version} {active.active&&<span className="badge pass">Active</span>}</h2></div><button className="btn btn-secondary" disabled={validate.isPending} onClick={()=>validate.mutate()}>Validate search space</button></div><p className="muted">Only these curator-defined dimensions may change. A new version is required for edits after execution.</p></div>
+    {active && <div className="card"><div className="card-pad"><div className="topline"><div><div className="eyebrow">Search Space Builder</div><h2>Version {active.version} {active.active&&<span className="badge pass">Active</span>}</h2></div><button className="btn btn-secondary" disabled={validate.isPending} onClick={()=>validate.mutate()}>Validate search space</button></div><p className="muted">Only these curator-defined dimensions may change. A new version is required for edits after execution.</p><div style={{marginTop:14}}><SearchSpaceBands space={active}/></div></div>
       <div className="table-wrap"><table><thead><tr><th>Component</th><th>Role</th><th>Control</th><th>Range</th><th>Guards</th></tr></thead><tbody>{active.component_rules.map(r=><tr key={r.id}><td><strong>{r.display_name}</strong><div className="muted"><code>{r.component_key}</code></div></td><td>{r.role??"—"}</td><td>{r.locked?"Locked":r.mutable?"Mutable":"Fixed"}</td><td>{r.mutable?`${r.min_amount}–${r.max_amount} ${r.amount_unit??""} step ${r.step_amount??"—"}`:"—"}</td><td>{[r.required&&"required",r.prohibited&&"prohibited",active.balance_component_key===r.component_key&&"balance"].filter(Boolean).join(" · ")||"—"}</td></tr>)}</tbody></table></div>
       {active.process_rules.length>0&&<div className="table-wrap"><table><thead><tr><th>Process variable</th><th>Bounds</th><th>Operational status</th></tr></thead><tbody>{active.process_rules.map(r=><tr key={r.id}><td>{r.display_name}<div className="muted"><code>{r.parameter_key}</code></div></td><td>{r.min_value}–{r.max_value} {r.unit} · step {r.step_value??"—"}</td><td><span className="badge">Data-level hypothesis only</span></td></tr>)}</tbody></table></div>}
       {validation&&<div className="card-pad"><div className={`notice ${validation.valid?"":"fail"}`}><strong>{validation.valid?"Search space valid":"Search space blocked"}</strong> · estimated cardinality {validation.estimated_cardinality}{validation.issues.map(x=><div key={`${x.code}-${x.path}`} className="muted">{x.severity.toUpperCase()} · {x.code} · {x.path}: {x.message}</div>)}</div></div>}

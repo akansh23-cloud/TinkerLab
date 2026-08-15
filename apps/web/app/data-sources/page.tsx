@@ -6,7 +6,8 @@ import { api } from "@/lib/api";
 
 type Provider = {
   key:string; name:string; requires_api_key:boolean; configured:boolean;
-  note?:string; stored_licence?:{license_identifier?:string;commercial_use_permitted?:boolean;redistribution_permitted?:boolean;license_reviewed_by?:string}|null;
+  note?:string; server_side_only?:boolean; api_key_environment?:string; base_url?:string;
+  stored_licence?:{license_identifier?:string;commercial_use_permitted?:boolean;redistribution_permitted?:boolean;license_reviewed_by?:string}|null;
 };
 type Snapshot = {
   id:string;provider?:string;provider_name?:string;dataset_key:string;provider_version?:string;record_count:number;
@@ -58,7 +59,7 @@ export default function DataSourcesPage(){
   const choose=(key:string)=>{setProvider(key);setQueryText(JSON.stringify(DEFAULT_QUERIES[key]??{},null,2));ingest.reset();};
 
   return <>
-    <div className="topline"><div><div className="eyebrow">Phase 11.1 · governed external evidence</div><h1>External data sources</h1><div className="muted">Ingest provider data through licence gates, content-addressed snapshots, conservative identity resolution and explicit method provenance.</div></div></div>
+    <div className="topline"><div><div className="eyebrow">Phase 12.2 · governed external evidence</div><h1>External data sources</h1><div className="muted">Ingest provider data through licence gates, content-addressed snapshots, conservative identity resolution and explicit method provenance.</div></div></div>
     <div className="notice" style={{marginBottom:18}}>API keys remain server-side. Unreviewed or non-redistributable evidence cannot silently become an exportable dossier. A provider API version is never treated as a dataset release.</div>
     <div className="grid grid-2">
       <div className="card card-pad">
@@ -67,6 +68,9 @@ export default function DataSourcesPage(){
           <label className="label">Provider<select className="select" value={provider} onChange={e=>choose(e.target.value)}>{(providers.data??[]).map(p=><option key={p.key} value={p.key}>{p.name}</option>)}</select></label>
           {selected&&<div style={{display:"flex",gap:8,flexWrap:"wrap"}}><span className={`badge ${selected.configured?"pass":"fail"}`}>{selected.configured?"CONFIGURED":"NOT CONFIGURED"}</span>{selected.stored_licence?.license_identifier&&<span className="badge">{selected.stored_licence.license_identifier}</span>}</div>}
           {selected?.note&&<div className="muted">{selected.note}</div>}
+          {selected?.requires_api_key && selected.server_side_only && <div className="muted">
+            API credential: <code>{selected.api_key_environment ?? "server environment"}</code> · server-side only{selected.configured ? " · ready" : " · add it to the API deployment environment"}.
+          </div>}
           <label className="label">Dataset key<input className="input" value={datasetKey} onChange={e=>setDatasetKey(e.target.value)} /></label>
           {provider==="optimade"&&<><label className="label">OPTIMADE HTTPS base URL<input className="input" placeholder="https://provider.example" value={optimadeBase} onChange={e=>setOptimadeBase(e.target.value)}/></label><label className="label">Provider prefix<input className="input" value={optimadeProvider} onChange={e=>setOptimadeProvider(e.target.value)}/></label></>}
           <label className="label">Provider query<textarea className="textarea" rows={11} value={queryText} onChange={e=>setQueryText(e.target.value)}/></label>

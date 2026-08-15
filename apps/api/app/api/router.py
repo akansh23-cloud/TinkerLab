@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from app.api.routes.bench import router as bench_router
 from app.api.routes.experiments import router as experiments_router
 from app.api.routes.experiments_lab import router as experiments_lab_router
 from app.api.routes.external_data import router as external_data_router
@@ -40,3 +41,6 @@ api_router.include_router(experiments_lab_router)
 api_router.include_router(external_data_router)
 
 api_router.include_router(replacement_router)
+
+# Phase 12 — intake bench. Registered last so its routes never shadow a scientific endpoint.
+api_router.include_router(bench_router)

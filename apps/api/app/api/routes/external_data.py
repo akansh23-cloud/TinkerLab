@@ -93,6 +93,8 @@ def providers(db: Session = Depends(get_db)):
         {
             "key": "materials_project", "name": "Materials Project", "requires_api_key": True,
             "configured": bool(settings.materials_project_api_key), "stored_licence": stored("materials_project"),
+            "server_side_only": True, "api_key_environment": "MATERIALS_PROJECT_API_KEY",
+            "base_url": settings.materials_project_api_base_url,
         },
         {
             "key": "pubchem", "name": "PubChem (NIH/NLM)", "requires_api_key": False,
@@ -181,7 +183,10 @@ def run_external_ingestion(
     if payload.provider == "materials_project":
         if not settings.materials_project_api_key:
             raise HTTPException(503, "Materials Project API key is not configured on the server")
-        connector = MaterialsProjectConnector(api_key=settings.materials_project_api_key)
+        connector = MaterialsProjectConnector(
+            api_key=settings.materials_project_api_key,
+            base_url=settings.materials_project_api_base_url,
+        )
     elif payload.provider == "epa_comptox":
         if not settings.epa_comptox_api_key:
             raise HTTPException(503, "EPA CompTox API key is not configured on the server")

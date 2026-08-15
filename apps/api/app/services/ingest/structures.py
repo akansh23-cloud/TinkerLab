@@ -315,6 +315,10 @@ class MaterialsProjectConnector(Connector):
 
     BASE_URL = "https://api.materialsproject.org"
 
+    def __init__(self, transport=None, *, api_key: str | None = None, base_url: str | None = None, **kwargs):
+        super().__init__(transport, api_key=api_key, **kwargs)
+        self.base_url = (base_url or self.BASE_URL).rstrip("/")
+
     def fetch(self, **query: Any) -> FetchResult:
         if not self.api_key:
             raise ConnectorError(
@@ -333,7 +337,7 @@ class MaterialsProjectConnector(Connector):
             if query.get(key) is not None:
                 base_params[key] = query[key]
 
-        endpoint = f"{self.BASE_URL}/materials/summary/"
+        endpoint = f"{self.base_url}/materials/summary/"
         records: list[dict[str, Any]] = []
         offset = 0
         first_meta: dict[str, Any] = {}
