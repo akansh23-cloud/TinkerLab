@@ -9,7 +9,7 @@ router = APIRouter(tags=["system"])
 
 @router.get("/health")
 def health() -> dict[str, object]:
-    return {"status": "ok", "service": "tinkerlab-api", "phase": "12.2.2"}
+    return {"status": "ok", "service": "tinkerlab-api", "phase": "12.2.3"}
 
 
 @router.get("/demo-context")

@@ -5,5 +5,15 @@
       "maxDuration": 60,
       "excludeFiles": "{node_modules/**,.next/**,coverage/**,**/__pycache__/**,**/*.pyc,python_backend/app/tests/**}"
     }
-  }
+  },
+  "rewrites": [
+    {
+      "source": "/api",
+      "destination": "/api/index?__tinker_path="
+    },
+    {
+      "source": "/api/:path*",
+      "destination": "/api/index?__tinker_path=:path*"
+    }
+  ]
 }
