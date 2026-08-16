@@ -17,17 +17,24 @@ jobs:
           cache-dependency-path: apps/api/requirements.txt
       - name: Install API dependencies
         run: python -m pip install -r apps/api/requirements.txt
-      - name: Compile Phase 13.2 modules
+      - name: Compile Phase 13.2 modules and Vercel mirror
         run: |
           python -m py_compile \
             apps/api/app/domain/material_identity.py \
             apps/api/app/models/material_identity.py \
             apps/api/app/schemas/material_identity.py \
             apps/api/app/services/material_identity.py \
-            apps/api/alembic/versions/0015_phase13_2_material_identity.py
+            apps/api/app/services/replacement/context.py \
+            apps/api/alembic/versions/0015_phase13_2_material_identity.py \
+            apps/web/python_backend/app/domain/material_identity.py \
+            apps/web/python_backend/app/models/material_identity.py \
+            apps/web/python_backend/app/schemas/material_identity.py \
+            apps/web/python_backend/app/services/material_identity.py \
+            apps/web/python_backend/app/services/replacement/context.py \
+            apps/web/python_backend/alembic/versions/0015_phase13_2_material_identity.py
       - name: Ruff Phase 13.2
         working-directory: apps/api
-        run: ruff check app/domain/material_identity.py app/models/material_identity.py app/schemas/material_identity.py app/services/material_identity.py tests/test_phase13_2_material_identity.py
+        run: ruff check app/domain/material_identity.py app/models/material_identity.py app/schemas/material_identity.py app/services/material_identity.py app/services/replacement/context.py tests/test_phase13_2_material_identity.py
       - name: Phase 13.2 golden tests
         working-directory: apps/api
         run: pytest -q tests/test_phase13_2_material_identity.py
