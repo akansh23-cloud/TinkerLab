@@ -4,7 +4,12 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.domain.evidence_engine import DistributionType, EvidenceTier, EvidenceTierStatus, TemperatureStatus
+from app.domain.evidence_engine import (
+    DistributionType,
+    EvidenceTier,
+    EvidenceTierStatus,
+    TemperatureStatus,
+)
 
 
 class PropertyValidityEnvelopeV13Schema(BaseModel):
