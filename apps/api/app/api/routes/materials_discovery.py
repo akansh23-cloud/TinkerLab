@@ -2,12 +2,17 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, model_validator
+from sqlalchemy.orm import Session
 
+from app.api.deps import scope_organisation
 from app.core.config import get_settings
-from app.services.ingest import ConnectorError
+from app.db.session import get_db
+from app.models.entities import Candidate, ReplacementProject, SourceRecord
+from app.services.ingest import ConnectorError, LicenceError, ingest
 from app.services.ingest.materials_project_v2 import MaterialsProjectConnector
+from app.services.ingest.persist import PersistError
 from app.services.materials_discovery import preview_materials_project_candidates
 
 router = APIRouter(prefix="/external-data/materials-project", tags=["external-data", "discovery"])
@@ -67,6 +72,17 @@ class MaterialsDiscoveryRequest(BaseModel):
         return self
 
 
+class AdoptMaterialsProjectCandidateRequest(BaseModel):
+    material_id: str = Field(min_length=3, max_length=80, pattern=r"^mp-[A-Za-z0-9-]+$")
+    project_id: str = Field(min_length=1, max_length=80)
+
+
+def _organisation(value: str | None) -> str:
+    if not value:
+        raise HTTPException(400, "X-Organisation-ID is required to adopt a candidate")
+    return value
+
+
 @router.post("/discover")
 def discover_materials(payload: MaterialsDiscoveryRequest):
     """Screen live Materials Project candidates without persisting any result.
@@ -100,3 +116,104 @@ def discover_materials(payload: MaterialsDiscoveryRequest):
         )
     except (ConnectorError, ValueError) as exc:
         raise HTTPException(422, str(exc)) from exc
+
+
+@router.post("/adopt", status_code=201)
+def adopt_materials_project_candidate(
+    payload: AdoptMaterialsProjectCandidateRequest,
+    organisation_id: str | None = Depends(scope_organisation),
+    db: Session = Depends(get_db),
+):
+    """Re-fetch, persist, and attach one reviewed MP record to a replacement project atomically.
+
+    The client supplies only the upstream Materials Project identifier and target project. Property
+    values from the discovery preview are never trusted on write: the server re-fetches the record,
+    persists its snapshot/source/evidence chain, and records the material as a proposed candidate.
+    Computed database values remain computational evidence and are never promoted to measurements.
+    """
+    org = _organisation(organisation_id)
+    project = db.get(ReplacementProject, payload.project_id)
+    if project is None or project.organisation_id != org:
+        raise HTTPException(404, "Replacement project not found")
+    if not settings.materials_project_api_key:
+        raise HTTPException(503, "Materials Project API key is not configured on the server")
+
+    connector = MaterialsProjectConnector(
+        api_key=settings.materials_project_api_key,
+        base_url=settings.materials_project_api_base_url,
+    )
+    try:
+        ingestion = ingest(
+            db,
+            connector,
+            dataset_key="materials_project_candidate_adoption",
+            organisation_id=org,
+            commercial_context=True,
+            material_ids=[payload.material_id],
+            max_records=1,
+        )
+        if ingestion.get("record_count") != 1 or not ingestion.get("results"):
+            db.rollback()
+            raise HTTPException(404, "Materials Project material was not found")
+
+        persisted = ingestion["results"][0]
+        material_id = persisted.get("material_id")
+        if not material_id and persisted.get("source_record_id"):
+            source_record = db.get(SourceRecord, persisted["source_record_id"])
+            material_id = (source_record.metadata_json or {}).get("resolved_material_id") if source_record else None
+        if not material_id:
+            db.rollback()
+            raise HTTPException(409, "Ingested source record did not resolve to a TinkerLab material")
+
+        candidate = (
+            db.query(Candidate)
+            .filter(Candidate.project_id == project.id, Candidate.material_id == material_id)
+            .one_or_none()
+        )
+        attached = candidate is None
+        if candidate is None:
+            candidate = Candidate(
+                project_id=project.id,
+                candidate_kind="known_material",
+                material_id=material_id,
+                hypothesis_id=None,
+                candidate_source="retrieved_future",
+                status="proposed",
+                notes=(
+                    f"Adopted from Materials Project discovery ({payload.material_id}). "
+                    "Imported values are computed-database evidence, not experimental measurements."
+                ),
+            )
+            db.add(candidate)
+            db.flush()
+
+        db.commit()
+        return {
+            "project_id": project.id,
+            "candidate_id": candidate.id,
+            "material_id": material_id,
+            "source_material_id": payload.material_id,
+            "attached": attached,
+            "ingestion_status": persisted.get("status"),
+            "dataset_snapshot_id": ingestion.get("dataset_snapshot_id"),
+            "source_record_id": persisted.get("source_record_id"),
+            "evidence_id": persisted.get("evidence_id"),
+            "observations_written": persisted.get("observations", 0),
+            "source_data_kind": "computed_database",
+            "candidate_status": "proposed",
+            "warning": (
+                "Materials Project values are computational database evidence. Candidate adoption "
+                "does not constitute experimental validation or acceptance."
+            ),
+        }
+    except HTTPException:
+        raise
+    except LicenceError as exc:
+        db.rollback()
+        raise HTTPException(409, str(exc)) from exc
+    except (ConnectorError, PersistError, ValueError) as exc:
+        db.rollback()
+        raise HTTPException(422, str(exc)) from exc
+    except Exception:
+        db.rollback()
+        raise
