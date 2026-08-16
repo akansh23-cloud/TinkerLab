@@ -1,14 +1,68 @@
 "use client";
-import {use} from "react";
+import {use, useEffect, useState} from "react";
 import Link from "next/link";
 import {useQuery} from "@tanstack/react-query";
 import {api, SimulationWorkflowDetail} from "@/lib/api";
 import {SimulationWarning} from "@/components/SimulationWarning";
 import {ConvergenceBadge} from "@/components/ConvergenceBadge";
 
+type ReplacementProgram={id:string;project_id:string};
+type DecisionAction={id:string;candidate_id?:string|null;requirement_key?:string|null;action_type:string;status:string};
+type DecisionSync={completed:number;eligible:number;note:string};
+
 export default function SimulationWorkflowPage({params}:{params:Promise<{id:string}>}){
   const {id}=use(params);
   const detail=useQuery({queryKey:["sim-workflow",id],queryFn:()=>api<SimulationWorkflowDetail>(`/simulation/workflows/${id}`)});
+  const [decisionSync,setDecisionSync]=useState<DecisionSync|null>(null);
+  const [decisionSyncError,setDecisionSyncError]=useState("");
+  const [syncing,setSyncing]=useState(false);
+
+  async function closeDecisionActions(){
+    const data=detail.data;
+    if(!data||syncing||decisionSync)return;
+    const {workflow,result,property_estimates}=data;
+    if(!workflow.project_id||!workflow.candidate_id){
+      setDecisionSync({completed:0,eligible:0,note:"This workflow was not launched with project/candidate context, so no replacement-decision action was changed."});
+      return;
+    }
+    if(!result||result.scientific_status!=="converged"){
+      setDecisionSync({completed:0,eligible:0,note:`Simulation scientific status is ${result?.scientific_status??"no_result"}; decision actions remain open until a scientifically converged result exists.`});
+      return;
+    }
+    if(!property_estimates.length){
+      setDecisionSync({completed:0,eligible:0,note:"The workflow converged but produced no registered property estimate. No decision action was closed."});
+      return;
+    }
+    setSyncing(true);setDecisionSyncError("");
+    try{
+      const programs=await api<ReplacementProgram[]>(`/replacement-programs?project_id=${encodeURIComponent(workflow.project_id)}`);
+      let eligible=0,completed=0;
+      for(const program of programs){
+        const actions=await api<DecisionAction[]>(`/replacement-programs/${program.id}/actions?status=open`);
+        for(const action of actions){
+          if(action.action_type!=="run_simulation"||action.candidate_id!==workflow.candidate_id)continue;
+          if(action.requirement_key&&workflow.requested_property_key&&action.requirement_key!==workflow.requested_property_key)continue;
+          if(action.requirement_key&&!workflow.requested_property_key)continue;
+          eligible+=1;
+          await api(`/replacement-programs/${program.id}/actions/${action.id}/transition`,{
+            method:"POST",
+            body:JSON.stringify({
+              transition:"complete",
+              result_reference:`simulation_result:${result.id}:${result.result_checksum}`,
+              note:`Closed automatically from scientifically converged simulation workflow ${workflow.id}. The result remains simulated evidence and is not a measurement or physical qualification.`,
+            }),
+          });
+          completed+=1;
+        }
+      }
+      setDecisionSync({completed,eligible,note:completed?"Matching candidate-scoped simulation actions were closed with an immutable result ID/checksum reference. Scoped evidence events and reassessment are handled by the replacement-decision backend.":"No open simulation action matched this candidate/property; no decision state was changed."});
+    }catch(e){
+      setDecisionSyncError(e instanceof Error?e.message:"Simulation converged, but decision-loop synchronization failed.");
+    }finally{setSyncing(false)}
+  }
+
+  useEffect(()=>{if(detail.data&&!decisionSync&&!decisionSyncError)void closeDecisionActions();},[detail.data,decisionSync,decisionSyncError]);
+
   if(detail.isLoading) return <div className="empty">Loading simulation workflow…</div>;
   if(detail.error||!detail.data) return <div className="empty">Workflow unavailable: {(detail.error as Error)?.message}</div>;
   const {workflow,steps,jobs,artifacts,result,property_estimates}=detail.data;
@@ -22,6 +76,7 @@ export default function SimulationWorkflowPage({params}:{params:Promise<{id:stri
       <Link className="btn btn-secondary" href="/simulation">Simulation Lab</Link>
     </div>
     <SimulationWarning/>
+    {(decisionSync||decisionSyncError||syncing)&&<div className={`notice ${decisionSyncError?"fail":""}`}><strong>Decision-loop integration</strong>{syncing&&<div className="muted">Checking for a matching open simulation action…</div>}{decisionSync&&<div><div>{decisionSync.completed}/{decisionSync.eligible} matching validation action(s) closed.</div><div className="muted">{decisionSync.note}</div></div>}{decisionSyncError&&<div className="muted">The simulation result remains valid and persisted, but its decision action was left open: {decisionSyncError}</div>}</div>}
 
     <div className="grid grid-2">
       <div className="card card-pad">
