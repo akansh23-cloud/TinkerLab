@@ -11,6 +11,7 @@ const icons:Record<string,string>={
   lab:"M9 3h6v2h-1v4.1l4.7 7.9A2.7 2.7 0 0 1 16.4 21H7.6a2.7 2.7 0 0 1-2.3-4L10 9.1V5H9V3Zm2.8 7-4.7 8a.7.7 0 0 0 .5 1h8.8a.7.7 0 0 0 .5-1l-4.7-8h-.4Z",
   evidence:"M5 4h14v16H5V4Zm3 4h8V6H8v2Zm0 4h8v-2H8v2Zm0 4h6v-2H8v2Z",
   decisions:"M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm4.6 7.4-5.3 6a1 1 0 0 1-1.5.1l-2.4-2.4 1.4-1.4 1.7 1.7 4.6-5.2 1.5 1.2Z",
+  audit:"M4 4h16v16H4V4Zm3 3v2h10V7H7Zm0 4v2h4v-2H7Zm6 0v2h4v-2h-4Zm-6 4v2h4v-2H7Zm6 0v2h4v-2h-4Z",
   reports:"M6 2h9l4 4v16H6V2Zm8 2v3h3l-3-3ZM9 11h6V9H9v2Zm0 4h6v-2H9v2Zm0 4h4v-2H9v2Z",
   settings:"M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Zm9 3.5-2.1-.8a7 7 0 0 0-.5-1.2l.9-2-2.3-2.3-2 .9a7 7 0 0 0-1.2-.5L13 4h-2l-.8 2.1a7 7 0 0 0-1.2.5l-2-.9L4.7 8l.9 2a7 7 0 0 0-.5 1.2L3 12v2l2.1.8c.1.4.3.8.5 1.2l-.9 2L7 20.3l2-.9c.4.2.8.4 1.2.5L11 22h2l.8-2.1c.4-.1.8-.3 1.2-.5l2 .9 2.3-2.3-.9-2c.2-.4.4-.8.5-1.2L21 14v-2Z",
 };
@@ -24,6 +25,7 @@ const nav=[
   {label:"Validation Plan",href:"/validation-plan",icon:"lab",match:(p:string)=>p.startsWith("/validation-plan")},
   {label:"Evidence",href:"/evidence",icon:"evidence",match:(p:string)=>p.startsWith("/evidence")||p==="/validation"||p.startsWith("/validation/")||p.startsWith("/observations")},
   {label:"Decisions",href:"/decisions",icon:"decisions",match:(p:string)=>p.startsWith("/decisions")||p.startsWith("/reasoning")||p.includes("/replacement")},
+  {label:"Decision Audit",href:"/decision-audit",icon:"audit",match:(p:string)=>p.startsWith("/decision-audit")},
   {label:"Reports",href:"/reports",icon:"reports",match:(p:string)=>p.startsWith("/reports")},
   {label:"Settings",href:"/settings",icon:"settings",match:(p:string)=>p.startsWith("/settings")||p.startsWith("/data-sources")},
 ];
