@@ -1,0 +1,35 @@
+name: Validate Phase 13.4
+
+on:
+  push:
+    branches: [phase13-4-condition-resolution]
+  pull_request:
+    branches: [develop]
+
+jobs:
+  phase13_4:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: apps/api/requirements.txt
+      - name: Install API dependencies
+        run: python -m pip install -r apps/api/requirements.txt
+      - name: Compile Phase 13.4 canonical and Vercel mirror
+        run: |
+          python -m py_compile \
+            apps/api/app/models/property_models.py \
+            apps/api/app/services/condition_resolver.py \
+            apps/api/alembic/versions/0016_phase13_4_property_models.py \
+            apps/web/python_backend/app/models/property_models.py \
+            apps/web/python_backend/app/services/condition_resolver.py \
+            apps/web/python_backend/alembic/versions/0016_phase13_4_property_models.py
+      - name: Ruff Phase 13.4
+        working-directory: apps/api
+        run: ruff check app/models/property_models.py app/services/condition_resolver.py tests/test_phase13_4_condition_resolution.py
+      - name: Phase 13.4 golden tests
+        working-directory: apps/api
+        run: pytest -q tests/test_phase13_4_condition_resolution.py tests/test_phase13_3_gate_expressions.py
