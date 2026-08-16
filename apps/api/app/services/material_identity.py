@@ -5,9 +5,9 @@ from collections.abc import Iterable
 from sqlalchemy.orm import Session
 
 from app.domain.material_identity import (
+    IdentityCompleteness,
     IdentityConflict,
     IdentityConflictSeverity,
-    IdentityCompleteness,
     MaterialIdentityConflict,
     composition_fingerprint,
     differing_identity_dimensions,
