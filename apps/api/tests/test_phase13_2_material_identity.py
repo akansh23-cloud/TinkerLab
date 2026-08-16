@@ -97,8 +97,9 @@ def test_direction_policy_is_property_specific(db):
             direction=None,
         )
 
-    assert_directional_property_has_direction(
+    result = assert_directional_property_has_direction(
         identity,
         property_key="band_gap",
         direction=None,
-    ) is None
+    )
+    assert result is None
