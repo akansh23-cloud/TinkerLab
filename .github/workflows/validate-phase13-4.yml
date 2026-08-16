@@ -30,6 +30,11 @@ jobs:
       - name: Ruff Phase 13.4
         working-directory: apps/api
         run: ruff check app/models/property_models.py app/services/condition_resolver.py tests/test_phase13_4_condition_resolution.py
-      - name: Phase 13.4 golden tests
+      - name: Full Phase 13 scientific regression suite
         working-directory: apps/api
-        run: pytest -q tests/test_phase13_4_condition_resolution.py tests/test_phase13_3_gate_expressions.py
+        run: |
+          pytest -q \
+            tests/test_phase13_1_property_envelopes.py \
+            tests/test_phase13_2_material_identity.py \
+            tests/test_phase13_3_gate_expressions.py \
+            tests/test_phase13_4_condition_resolution.py
