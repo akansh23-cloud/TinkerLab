@@ -5,7 +5,7 @@ import {usePathname} from "next/navigation";
 
 const icons:Record<string,string>={
   dashboard:"M4 13h6V4H4v9Zm10 7h6V11h-6v9ZM4 20h6v-5H4v5Zm10-11h6V4h-6v5Z",
-  materials:"M12 3 4 7v10l8 4 8-4V7l-8-4Zm0 2.2L17.6 8 12 10.8 6.4 8 12 5.2ZM6 10l5 2.5v5.9l-5-2.5V10Zm7 8.4v-5.9l5-2.5v5.9l-5 2.5Z",
+  materials:"M12 3 4 7v10l8 4 8-4V7l-8-4Zm0 2.2L17.6 8 12 10.8 6.4 8 12 5.2ZM6 10l5 2.5v5.9l-5-2.5V10Zm7 8.4v-5.9l5-2.5v5.9l-5-2.5Z",
   discover:"M11 2a9 9 0 1 0 5.65 16L22 23.35 23.35 22 18 16.65A9 9 0 0 0 11 2Zm0 2a7 7 0 1 1 0 14 7 7 0 0 1 0-14Zm3.8 3.2-5.2 2.4-2.4 5.2 5.2-2.4 2.4-5.2Zm-3.1 3.1-.6 1.3-1.3.6.6-1.3 1.3-.6Z",
   requirements:"M6 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm2 5h8V6H8v2Zm0 5h8v-2H8v2Zm0 5h5v-2H8v2Z",
   lab:"M9 3h6v2h-1v4.1l4.7 7.9A2.7 2.7 0 0 1 16.4 21H7.6a2.7 2.7 0 0 1-2.3-4L10 9.1V5H9V3Zm2.8 7-4.7 8a.7.7 0 0 0 .5 1h8.8a.7.7 0 0 0 .5-1l-4.7-8h-.4Z",
@@ -21,7 +21,8 @@ const nav=[
   {label:"Discover",href:"/discover",icon:"discover",match:(p:string)=>p.startsWith("/discover")},
   {label:"Requirements",href:"/requirements",icon:"requirements",match:(p:string)=>p.startsWith("/requirements")||p.startsWith("/studies")},
   {label:"Virtual Lab",href:"/virtual-lab",icon:"lab",match:(p:string)=>p.includes("virtual-lab")||p.startsWith("/virtual-campaigns")},
-  {label:"Evidence",href:"/evidence",icon:"evidence",match:(p:string)=>p.startsWith("/evidence")||p.startsWith("/validation")||p.startsWith("/observations")},
+  {label:"Validation Plan",href:"/validation-plan",icon:"lab",match:(p:string)=>p.startsWith("/validation-plan")},
+  {label:"Evidence",href:"/evidence",icon:"evidence",match:(p:string)=>p.startsWith("/evidence")||p==="/validation"||p.startsWith("/validation/")||p.startsWith("/observations")},
   {label:"Decisions",href:"/decisions",icon:"decisions",match:(p:string)=>p.startsWith("/decisions")||p.startsWith("/reasoning")||p.includes("/replacement")},
   {label:"Reports",href:"/reports",icon:"reports",match:(p:string)=>p.startsWith("/reports")},
   {label:"Settings",href:"/settings",icon:"settings",match:(p:string)=>p.startsWith("/settings")||p.startsWith("/data-sources")},
