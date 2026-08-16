@@ -13,8 +13,8 @@ from __future__ import annotations
 import ast
 import math
 import random
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Mapping
 
 
 class GateExpressionError(ValueError):
@@ -100,8 +100,9 @@ def _parse(expression: str) -> tuple[ast.Expression, tuple[str, ...]]:
         raise GateExpressionError(f"Invalid gate expression syntax: {exc.msg}") from exc
 
     names: set[str] = set()
+    allowed_nodes = (ast.Expression, ast.Load, ast.Constant, ast.Name, ast.BinOp, ast.UnaryOp)
     for node in ast.walk(tree):
-        if isinstance(node, ast.Expression | ast.Load | ast.Constant | ast.Name | ast.BinOp | ast.UnaryOp):
+        if isinstance(node, allowed_nodes):
             pass
         elif isinstance(node, _ALLOWED_BINOPS + _ALLOWED_UNARY):
             pass
@@ -113,8 +114,6 @@ def _parse(expression: str) -> tuple[ast.Expression, tuple[str, ...]]:
             if node.id.startswith("_"):
                 raise GateExpressionError("Private or magic names are not permitted")
             names.add(node.id)
-        if isinstance(node, ast.Pow) and isinstance(getattr(node, "parent", None), ast.BinOp):
-            pass
     return tree, tuple(sorted(names))
 
 
@@ -181,7 +180,6 @@ def _sample(evidence: PropertyEvidence, rng: random.Random) -> float:
     if distribution == "lognormal":
         if evidence.value <= 0 or evidence.uncertainty is None or evidence.uncertainty <= 0:
             raise GateExpressionError("Lognormal evidence requires positive mean and spread")
-        # ``uncertainty`` is the standard deviation in linear space. Convert moments to log space.
         variance = float(evidence.uncertainty) ** 2
         mean = float(evidence.value)
         sigma2 = math.log1p(variance / (mean * mean))
@@ -247,7 +245,6 @@ def evaluate_gate(
         str(properties[name].evidence_tier or "").upper() == "PREDICTED" for name in names
     )
 
-    # Unknown distributions are not silently collapsed to point estimates.
     for name in names:
         evidence = properties[name]
         if evidence.value is None:
