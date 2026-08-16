@@ -1,0 +1,33 @@
+name: Validate Phase 13.2 Material Identity
+
+on:
+  push:
+    branches:
+      - phase13-2-material-identity
+
+jobs:
+  phase13_2:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: apps/api/requirements.txt
+      - name: Install API dependencies
+        run: python -m pip install -r apps/api/requirements.txt
+      - name: Compile Phase 13.2 modules
+        run: |
+          python -m py_compile \
+            apps/api/app/domain/material_identity.py \
+            apps/api/app/models/material_identity.py \
+            apps/api/app/schemas/material_identity.py \
+            apps/api/app/services/material_identity.py \
+            apps/api/alembic/versions/0015_phase13_2_material_identity.py
+      - name: Ruff Phase 13.2
+        working-directory: apps/api
+        run: ruff check app/domain/material_identity.py app/models/material_identity.py app/schemas/material_identity.py app/services/material_identity.py tests/test_phase13_2_material_identity.py
+      - name: Phase 13.2 golden tests
+        working-directory: apps/api
+        run: pytest -q tests/test_phase13_2_material_identity.py
