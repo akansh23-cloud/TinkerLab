@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, model_validator
@@ -14,9 +14,11 @@ from app.services.ingest import ConnectorError, LicenceError, ingest
 from app.services.ingest.materials_project_v2 import MaterialsProjectConnector
 from app.services.ingest.persist import PersistError
 from app.services.materials_discovery import preview_materials_project_candidates
+from app.services.units import UnitError, convert
 
 router = APIRouter(prefix="/external-data/materials-project", tags=["external-data", "discovery"])
 settings = get_settings()
+
 
 PropertyKey = Literal[
     "band_gap",
@@ -27,6 +29,16 @@ PropertyKey = Literal[
     "shear_modulus",
     "magnetic_moment",
 ]
+
+_MISSION_PROPERTY_UNITS: dict[str, str] = {
+    "band_gap": "eV",
+    "density": "g/cm^3",
+    "energy_above_hull": "eV/atom",
+    "formation_energy_per_atom": "eV/atom",
+    "bulk_modulus": "GPa",
+    "shear_modulus": "GPa",
+    "magnetic_moment": "bohr_magneton",
+}
 
 
 class ScreeningConstraint(BaseModel):
@@ -71,28 +83,130 @@ class MaterialsDiscoveryRequest(BaseModel):
         return self
 
 
+class MissionMaterialsDiscoveryRequest(BaseModel):
+    project_id: str = Field(min_length=1, max_length=80)
+    formula: str | None = Field(default=None, min_length=1, max_length=120)
+    chemsys: str | None = Field(default=None, min_length=1, max_length=180)
+    elements: list[str] | None = Field(default=None, max_length=30)
+    exclude_elements: list[str] | None = Field(default=None, max_length=30)
+    is_stable: bool | None = None
+    theoretical: bool | None = None
+    stable_preferred: bool = True
+    max_candidates: int = Field(default=25, ge=1, le=100)
+    search_pool: int = Field(default=100, ge=1, le=500)
+
+    @model_validator(mode="after")
+    def validate_request(self) -> "MissionMaterialsDiscoveryRequest":
+        if self.search_pool < self.max_candidates:
+            raise ValueError("search_pool must be greater than or equal to max_candidates")
+        for collection_name in ("elements", "exclude_elements"):
+            collection = getattr(self, collection_name)
+            if collection and any(not value.strip() or len(value.strip()) > 3 for value in collection):
+                raise ValueError(f"{collection_name} must contain element symbols")
+        return self
+
+
 class AdoptMaterialsProjectCandidateRequest(BaseModel):
     material_id: str = Field(min_length=3, max_length=80, pattern=r"^mp-[A-Za-z0-9-]+$")
     project_id: str = Field(min_length=1, max_length=80)
 
 
-def _organisation(value: str | None) -> str:
+def _organisation(value: str | None, purpose: str = "access this mission") -> str:
     if not value:
-        raise HTTPException(400, "X-Organisation-ID is required to adopt a candidate")
+        raise HTTPException(400, f"X-Organisation-ID is required to {purpose}")
     return value
 
 
-@router.post("/discover")
-def discover_materials(payload: MaterialsDiscoveryRequest):
-    """Screen live Materials Project candidates without persisting any result."""
+def _unsupported_constraint(constraint: Any, reason: str, detail: str | None = None) -> dict[str, Any]:
+    return {
+        "constraint_id": constraint.id,
+        "property_key": constraint.property_key,
+        "comparator": constraint.comparator,
+        "target_value": constraint.target_value,
+        "target_value_upper": constraint.target_value_upper,
+        "target_unit": constraint.target_unit,
+        "hard_or_soft": constraint.hard_or_soft,
+        "reason": reason,
+        "detail": detail,
+    }
+
+
+def _mission_screening_constraints(project: ReplacementProject) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    merged: dict[str, dict[str, Any]] = {}
+    unsupported: list[dict[str, Any]] = []
+
+    for constraint in project.constraints:
+        key = str(constraint.property_key)
+        comparator = str(constraint.comparator)
+        if str(constraint.hard_or_soft) != "hard":
+            unsupported.append(_unsupported_constraint(constraint, "soft_constraint_not_used_as_search_gate"))
+            continue
+        if str(constraint.constraint_type) != "property":
+            unsupported.append(_unsupported_constraint(constraint, "non_property_constraint"))
+            continue
+        target_unit = _MISSION_PROPERTY_UNITS.get(key)
+        if target_unit is None:
+            unsupported.append(_unsupported_constraint(constraint, "property_not_searchable_in_materials_project"))
+            continue
+        if comparator not in {">=", "<=", "between"}:
+            unsupported.append(
+                _unsupported_constraint(
+                    constraint,
+                    "comparator_not_losslessly_searchable",
+                    "Materials Project range filters are inclusive; strict/equality/boolean mission semantics are not approximated.",
+                )
+            )
+            continue
+        if constraint.target_value is None or not constraint.target_unit:
+            unsupported.append(_unsupported_constraint(constraint, "missing_numeric_target_or_unit"))
+            continue
+
+        try:
+            primary = convert(float(constraint.target_value), str(constraint.target_unit), target_unit)
+            upper = (
+                convert(float(constraint.target_value_upper), str(constraint.target_unit), target_unit)
+                if comparator == "between" and constraint.target_value_upper is not None
+                else None
+            )
+        except (UnitError, TypeError, ValueError) as exc:
+            unsupported.append(_unsupported_constraint(constraint, "unit_not_convertible", str(exc)))
+            continue
+
+        if comparator == "between" and upper is None:
+            unsupported.append(_unsupported_constraint(constraint, "missing_upper_bound"))
+            continue
+
+        row = merged.setdefault(
+            key,
+            {"property": key, "minimum": None, "maximum": None, "unit": target_unit, "source_constraint_ids": []},
+        )
+        row["source_constraint_ids"].append(constraint.id)
+        if comparator == ">=":
+            row["minimum"] = primary if row["minimum"] is None else max(row["minimum"], primary)
+        elif comparator == "<=":
+            row["maximum"] = primary if row["maximum"] is None else min(row["maximum"], primary)
+        else:
+            row["minimum"] = primary if row["minimum"] is None else max(row["minimum"], primary)
+            row["maximum"] = upper if row["maximum"] is None else min(row["maximum"], upper)
+
+    for row in merged.values():
+        if row["minimum"] is not None and row["maximum"] is not None and row["minimum"] > row["maximum"]:
+            raise HTTPException(422, f"Mission has contradictory hard constraints for {row['property']}: minimum exceeds maximum")
+
+    return list(merged.values()), unsupported
+
+
+def _connector() -> MaterialsProjectConnector:
     if not settings.materials_project_api_key:
         raise HTTPException(503, "Materials Project API key is not configured on the server")
-
-    connector = MaterialsProjectConnector(
+    return MaterialsProjectConnector(
         api_key=settings.materials_project_api_key,
         base_url=settings.materials_project_api_base_url,
     )
-    filters = {
+
+
+def _discovery_filters(payload: MaterialsDiscoveryRequest | MissionMaterialsDiscoveryRequest) -> dict[str, Any]:
+    return {
         "formula": payload.formula,
         "chemsys": payload.chemsys,
         "elements": payload.elements,
@@ -100,11 +214,15 @@ def discover_materials(payload: MaterialsDiscoveryRequest):
         "is_stable": payload.is_stable,
         "theoretical": payload.theoretical,
     }
+
+
+@router.post("/discover")
+def discover_materials(payload: MaterialsDiscoveryRequest):
     try:
         return preview_materials_project_candidates(
-            connector,
+            _connector(),
             constraints=[constraint.model_dump() for constraint in payload.constraints],
-            search_filters=filters,
+            search_filters=_discovery_filters(payload),
             max_candidates=payload.max_candidates,
             search_pool=payload.search_pool,
             stable_preferred=payload.stable_preferred,
@@ -113,24 +231,70 @@ def discover_materials(payload: MaterialsDiscoveryRequest):
         raise HTTPException(422, str(exc)) from exc
 
 
+@router.post("/discover-mission")
+def discover_for_replacement_mission(
+    payload: MissionMaterialsDiscoveryRequest,
+    organisation_id: str | None = Depends(scope_organisation),
+    db: Session = Depends(get_db),
+):
+    org = _organisation(organisation_id, "screen candidates for a mission")
+    project = db.get(ReplacementProject, payload.project_id)
+    if project is None or project.organisation_id != org:
+        raise HTTPException(404, "Replacement project not found")
+
+    translated, unsupported = _mission_screening_constraints(project)
+    screening = [
+        {"property": row["property"], "minimum": row["minimum"], "maximum": row["maximum"]}
+        for row in translated
+    ]
+    filters = _discovery_filters(payload)
+    if not screening and not any(value is not None for value in filters.values()):
+        raise HTTPException(422, "This mission has no hard constraints that can be losslessly translated to Materials Project search filters.")
+
+    try:
+        result = preview_materials_project_candidates(
+            _connector(),
+            constraints=screening,
+            search_filters=filters,
+            max_candidates=payload.max_candidates,
+            search_pool=payload.search_pool,
+            stable_preferred=payload.stable_preferred,
+        )
+    except (ConnectorError, ValueError) as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+    hard_count = sum(str(constraint.hard_or_soft) == "hard" for constraint in project.constraints)
+    represented_ids = {source_id for row in translated for source_id in row["source_constraint_ids"]}
+    result["mission_context"] = {
+        "project_id": project.id,
+        "project_name": project.name,
+        "baseline_material_id": project.baseline_material_id,
+        "baseline_material_name": project.baseline_material.display_name if project.baseline_material else None,
+        "hard_constraint_count": hard_count,
+        "hard_constraints_represented": len(represented_ids),
+        "hard_constraint_coverage": round(len(represented_ids) / hard_count, 4) if hard_count else 0.0,
+        "translated_constraints": translated,
+        "unsupported_constraints": unsupported,
+        "search_semantics": (
+            "Only losslessly translatable hard numeric requirements are upstream search gates. "
+            "Soft, unsupported, strict, equality, and non-property requirements remain evidence gaps and must be evaluated later."
+        ),
+    }
+    return result
+
+
 @router.post("/adopt", status_code=201)
 def adopt_materials_project_candidate(
     payload: AdoptMaterialsProjectCandidateRequest,
     organisation_id: str | None = Depends(scope_organisation),
     db: Session = Depends(get_db),
 ):
-    """Re-fetch, persist, and attach one reviewed MP record to a replacement project atomically."""
-    org = _organisation(organisation_id)
+    org = _organisation(organisation_id, "adopt a candidate")
     project = db.get(ReplacementProject, payload.project_id)
     if project is None or project.organisation_id != org:
         raise HTTPException(404, "Replacement project not found")
-    if not settings.materials_project_api_key:
-        raise HTTPException(503, "Materials Project API key is not configured on the server")
+    connector = _connector()
 
-    connector = MaterialsProjectConnector(
-        api_key=settings.materials_project_api_key,
-        base_url=settings.materials_project_api_base_url,
-    )
     try:
         ingestion = ingest(
             db,
@@ -154,11 +318,7 @@ def adopt_materials_project_candidate(
             db.rollback()
             raise HTTPException(409, "Ingested source record did not resolve to a TinkerLab material")
 
-        candidate = (
-            db.query(Candidate)
-            .filter(Candidate.project_id == project.id, Candidate.material_id == material_id)
-            .one_or_none()
-        )
+        candidate = db.query(Candidate).filter(Candidate.project_id == project.id, Candidate.material_id == material_id).one_or_none()
         attached = candidate is None
         if candidate is None:
             candidate = Candidate(
