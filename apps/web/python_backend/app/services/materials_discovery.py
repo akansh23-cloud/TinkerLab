@@ -79,6 +79,45 @@ def _evaluate_constraints(
     return evaluations
 
 
+def _evaluate_preferences(
+    observations: dict[str, dict[str, Any]], preferences: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    evaluations = _evaluate_constraints(observations, preferences)
+    for evaluation, preference in zip(evaluations, preferences, strict=True):
+        evaluation.update(
+            {
+                "constraint_id": preference.get("constraint_id"),
+                "weight": float(preference.get("weight") or 1.0),
+                "severity": int(preference.get("severity") or 1),
+                "description": preference.get("description"),
+            }
+        )
+    return evaluations
+
+
+def _preference_summary(evaluations: list[dict[str, Any]]) -> dict[str, Any]:
+    pass_count = sum(row["status"] == "pass" for row in evaluations)
+    fail_count = sum(row["status"] == "fail" for row in evaluations)
+    unknown_count = sum(row["status"] == "unknown" for row in evaluations)
+    weights = [max(0.0, float(row.get("weight") or 0.0)) for row in evaluations]
+    total_weight = sum(weights)
+    pass_weight = sum(weight for row, weight in zip(evaluations, weights, strict=True) if row["status"] == "pass")
+    fail_weight = sum(weight for row, weight in zip(evaluations, weights, strict=True) if row["status"] == "fail")
+    unknown_weight = sum(weight for row, weight in zip(evaluations, weights, strict=True) if row["status"] == "unknown")
+    known_weight = pass_weight + fail_weight
+    return {
+        "pass": pass_count,
+        "fail": fail_count,
+        "unknown": unknown_count,
+        "total_weight": round(total_weight, 6),
+        "pass_weight": round(pass_weight, 6),
+        "fail_weight": round(fail_weight, 6),
+        "unknown_weight": round(unknown_weight, 6),
+        "evidence_coverage": round(known_weight / total_weight, 4) if total_weight else 1.0,
+        "known_weight_satisfaction": round(pass_weight / known_weight, 4) if known_weight else None,
+    }
+
+
 def preview_materials_project_candidates(
     connector: MaterialsProjectConnector,
     *,
@@ -87,9 +126,11 @@ def preview_materials_project_candidates(
     max_candidates: int,
     search_pool: int,
     stable_preferred: bool,
+    preferences: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Discover and rank candidates without writing to TinkerLab's database."""
 
+    preferences = preferences or []
     query: dict[str, Any] = {"max_records": max(search_pool, max_candidates)}
     for key, value in search_filters.items():
         if key in _SEARCH_FILTERS and value is not None:
@@ -116,6 +157,9 @@ def preview_materials_project_candidates(
         unknown_count = sum(row["status"] == "unknown" for row in evaluations)
         coverage = (pass_count + fail_count) / constraint_count if constraint_count else 1.0
 
+        preference_evaluations = _evaluate_preferences(observations, preferences)
+        preference_summary = _preference_summary(preference_evaluations)
+
         hull = observations.get("energy_above_hull", {}).get("numeric_value")
         hull_sort = float(hull) if isinstance(hull, (int, float)) else float("inf")
         stable = normalized.get("is_stable") is True
@@ -124,6 +168,9 @@ def preview_materials_project_candidates(
         sort_key = (
             fail_count,
             unknown_count,
+            float(preference_summary["fail_weight"]),
+            float(preference_summary["unknown_weight"]),
+            -float(preference_summary["pass_weight"]),
             -coverage,
             0 if (stable or not stable_preferred) else 1,
             1 if theoretical else 0,
@@ -147,6 +194,8 @@ def preview_materials_project_candidates(
                     "evidence_coverage": round(coverage, 4),
                 },
                 "constraint_evaluations": evaluations,
+                "preference_summary": preference_summary,
+                "preference_evaluations": preference_evaluations,
                 "observations": list(observations.values()),
                 "materials_project_origins": normalized.get("materials_project_origins") or [],
                 "last_updated": normalized.get("last_updated"),
@@ -160,6 +209,28 @@ def preview_materials_project_candidates(
         candidate.pop("_sort_key", None)
         candidate["rank"] = rank
 
+    ranking_order = [
+        "fewest_hard_constraint_failures",
+        "fewest_unknown_hard_constraints",
+    ]
+    if preferences:
+        ranking_order.extend(
+            [
+                "lowest_user_weighted_soft_failure",
+                "lowest_user_weighted_soft_unknown",
+                "highest_user_weighted_soft_satisfaction",
+            ]
+        )
+    ranking_order.extend(
+        [
+            "highest_hard_constraint_evidence_coverage",
+            "stable_material_preferred_when_requested",
+            "non_theoretical_material_preferred",
+            "lower_energy_above_hull_when_available",
+            "material_id_tiebreaker",
+        ]
+    )
+
     return {
         "preview_only": True,
         "persisted": False,
@@ -167,22 +238,20 @@ def preview_materials_project_candidates(
         "source_data_kind": "computed_database",
         "warning": (
             "Discovery rank is a deterministic screening order, not a probability of material "
-            "success. Materials Project values are computed database evidence unless explicitly "
+            "success. Soft-target weights are mission-authored priorities, not learned scientific "
+            "confidence. Materials Project values are computed database evidence unless explicitly "
             "identified otherwise by their provenance."
         ),
         "ranking_policy": {
-            "type": "deterministic_lexicographic",
-            "order": [
-                "fewest_constraint_failures",
-                "fewest_unknown_constraints",
-                "highest_constraint_evidence_coverage",
-                "stable_material_preferred_when_requested",
-                "non_theoretical_material_preferred",
-                "lower_energy_above_hull_when_available",
-                "material_id_tiebreaker",
-            ],
+            "type": "deterministic_multistage_lexicographic",
+            "order": ranking_order,
+            "soft_weight_semantics": (
+                "Weights order soft target satisfaction only after hard-gate status. Unknown evidence "
+                "is kept separate from a demonstrated failure and is never imputed."
+            ),
         },
         "constraints": constraints,
+        "preferences": preferences,
         "search_filters": search_filters,
         "query_descriptor": fetched.query_descriptor,
         "provider_version": fetched.provider_version,
