@@ -1,0 +1,20 @@
+name: Package Phase 13 Review
+
+on:
+  push:
+    branches:
+      - phase13-1-review
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create full project archive
+        run: zip -rq TinkerLab-Phase13.1-full-project.zip . -x '.git/*' 'TinkerLab-Phase13.1-full-project.zip'
+      - name: Upload full project archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: TinkerLab-Phase13.1-full-project
+          path: TinkerLab-Phase13.1-full-project.zip
+          if-no-files-found: error
