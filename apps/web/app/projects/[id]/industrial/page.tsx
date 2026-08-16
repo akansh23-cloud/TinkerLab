@@ -4,7 +4,7 @@ import Link from "next/link";
 import {useMutation, useQuery} from "@tanstack/react-query";
 import {
   api, CandidatePage, IndustrialConstraint, IndustrialEvidence, ManufacturingRoute,
-  ViabilityComparison,
+  ReplacementProgramRecord, ScientificActionRecord, ViabilityAssessment, ViabilityComparison,
 } from "@/lib/api";
 import {IndustrialStateBadge} from "@/components/IndustrialStateBadge";
 import {IndustrialSeparationNotice} from "@/components/IndustrialSeparationNotice";
@@ -21,6 +21,33 @@ const DIMENSION_LABELS: Record<string,string> = {
   experimental_validation: "Experimental validation",
 };
 
+const DECIDED_INDUSTRIAL_STATES = new Set(["pass","fail","partial"]);
+
+type IndustrialSyncSummary = {
+  assessmentId:string;
+  assessmentChecksum:string;
+  eligibleActions:number;
+  closedActions:number;
+  skippedActions:number;
+  resultReference:string;
+};
+
+function actionResolvedByAssessment(action:ScientificActionRecord, assessment:ViabilityAssessment):boolean{
+  if(action.action_type==="check_regulation"){
+    return DECIDED_INDUSTRIAL_STATES.has(String(assessment.dimension_states.regulatory_compatibility??"unknown"));
+  }
+  if(action.action_type==="check_supply"){
+    return DECIDED_INDUSTRIAL_STATES.has(String(assessment.dimension_states.supply_resilience??"unknown"));
+  }
+  if(action.action_type==="add_industrial_evidence"){
+    const total=Number(assessment.evidence_coverage?.total_records??0);
+    const stale=Number(assessment.evidence_coverage?.stale_records??0);
+    if(action.reason_code==="INDUSTRIAL_EVIDENCE_STALE") return total>0&&stale<total;
+    return total>0;
+  }
+  return false;
+}
+
 export default function IndustrialViabilityWorkspace({params}:{params:Promise<{id:string}>}){
   const {id: projectId} = use(params);
   const candidates = useQuery({queryKey:["candidate-lab",projectId],queryFn:()=>api<CandidatePage>(`/replacement-projects/${projectId}/candidate-lab?offset=0&limit=200`)});
@@ -34,6 +61,8 @@ export default function IndustrialViabilityWorkspace({params}:{params:Promise<{i
   const [comparison,setComparison]=useState<ViabilityComparison|null>(null);
   const [expanded,setExpanded]=useState<string|null>(null);
   const [useComposite,setUseComposite]=useState(false);
+  const [syncSummary,setSyncSummary]=useState<IndustrialSyncSummary|null>(null);
+  const [syncError,setSyncError]=useState("");
 
   const candidateItems = candidates.data?.items??[];
   const targets = selected.length>0 ? selected : candidateItems.slice(0,2).map(c=>c.id);
@@ -46,7 +75,7 @@ export default function IndustrialViabilityWorkspace({params}:{params:Promise<{i
       }),
       ...(useComposite?{composite_methodology:"declared_weighted_mean_v1"}:{}),
     })}),
-    onSuccess:setComparison,
+    onSuccess:value=>{setComparison(value);setSyncSummary(null);setSyncError("");},
   });
 
   const expandedCandidate=candidateItems.find(c=>c.id===expanded);
@@ -55,6 +84,53 @@ export default function IndustrialViabilityWorkspace({params}:{params:Promise<{i
   const evidence = useQuery({
     queryKey:["ind-evidence",expanded,expandedTargetId], enabled:!!expandedCandidate&&!!expandedTargetId,
     queryFn:()=>api<IndustrialEvidence[]>(`/industrial/evidence?target_kind=${expandedCandidate!.candidate_kind}&target_id=${expandedTargetId}`),
+  });
+
+  const recordAndSync = useMutation({
+    mutationFn:async()=>{
+      if(!expandedCandidate||!expandedTargetId) throw new Error("Select a candidate assessment first.");
+      setSyncError("");
+      const assessment=await api<ViabilityAssessment>("/industrial/viability/assess",{method:"POST",body:JSON.stringify({
+        project_id:projectId,
+        target_kind:expandedCandidate.candidate_kind,
+        target_id:expandedTargetId,
+        candidate_id:expandedCandidate.id,
+        ...(useComposite?{composite_methodology:"declared_weighted_mean_v1"}:{}),
+        persist:true,
+      })});
+      if(!assessment.assessment_id) throw new Error("The persisted industrial assessment did not return an assessment ID.");
+      const resultReference=`industrial_viability_assessment:${assessment.assessment_id}@${assessment.assessment_checksum}`;
+      const programs=await api<ReplacementProgramRecord[]>(`/replacement-programs?project_id=${encodeURIComponent(projectId)}`);
+      let eligibleActions=0;
+      let closedActions=0;
+      let skippedActions=0;
+      for(const program of programs){
+        const actions=await api<ScientificActionRecord[]>(`/replacement-programs/${program.id}/actions?status=open`);
+        const matching=actions.filter(action=>
+          action.id&&action.candidate_id===expandedCandidate.id&&
+          ["add_industrial_evidence","check_regulation","check_supply"].includes(action.action_type)
+        );
+        for(const action of matching){
+          if(!actionResolvedByAssessment(action,assessment)){
+            skippedActions+=1;
+            continue;
+          }
+          eligibleActions+=1;
+          await api(`/replacement-programs/${program.id}/actions/${action.id}/transition`,{
+            method:"POST",
+            body:JSON.stringify({to_status:"completed",result_reference:resultReference}),
+          });
+          closedActions+=1;
+        }
+      }
+      return {
+        assessmentId:assessment.assessment_id,
+        assessmentChecksum:assessment.assessment_checksum,
+        eligibleActions,closedActions,skippedActions,resultReference,
+      } satisfies IndustrialSyncSummary;
+    },
+    onSuccess:value=>setSyncSummary(value),
+    onError:error=>setSyncError(error instanceof Error?error.message:"Industrial decision-loop synchronization failed."),
   });
 
   if(candidates.isLoading) return <div className="empty">Loading Industrial Viability Workspace…</div>;
@@ -81,7 +157,7 @@ export default function IndustrialViabilityWorkspace({params}:{params:Promise<{i
             return <label key={c.id} className="muted" style={{display:"block",padding:"3px 0"}}>
               <input type="checkbox" checked={on} onChange={e=>{
                 setSelected(e.target.checked ? [...new Set([...targets,c.id])] : targets.filter(t=>t!==c.id));
-                setComparison(null);
+                setComparison(null);setSyncSummary(null);setSyncError("");
               }}/> {c.display_name} · {c.candidate_kind}
             </label>;
           })}
@@ -89,7 +165,7 @@ export default function IndustrialViabilityWorkspace({params}:{params:Promise<{i
         <div className="notice">
           <strong>Composite score</strong>
           <label className="muted" style={{display:"block",marginTop:4}}>
-            <input type="checkbox" checked={useComposite} onChange={e=>{setUseComposite(e.target.checked);setComparison(null);}}/>
+            <input type="checkbox" checked={useComposite} onChange={e=>{setUseComposite(e.target.checked);setComparison(null);setSyncSummary(null);setSyncError("");}}/>
             {" "}Compute a composite score using the declared weighted-mean methodology
           </label>
           <div className="muted" style={{marginTop:6}}>A composite appears only with an explicit methodology. Unknown and insufficient-evidence dimensions are excluded from it — never scored as zero — and the result stays marked partial so the exclusion is visible.</div>
@@ -136,7 +212,7 @@ export default function IndustrialViabilityWorkspace({params}:{params:Promise<{i
               </div>}
               <div style={{marginTop:5}}>
                 <button className="btn btn-secondary" style={{fontSize:11,padding:"2px 8px"}}
-                        onClick={()=>{const item=candidateItems.find(x=>(x.candidate_kind==="known_material"?x.material_id:x.hypothesis_id)===c.target_id);setExpanded(expanded===item?.id?null:item?.id??null)}}>
+                        onClick={()=>{const item=candidateItems.find(x=>(x.candidate_kind==="known_material"?x.material_id:x.hypothesis_id)===c.target_id);setExpanded(expanded===item?.id?null:item?.id??null);setSyncSummary(null);setSyncError("");}}>
                   {expanded&&expandedTargetId===c.target_id?"hide detail":"why?"}
                 </button>
               </div>
@@ -150,6 +226,20 @@ export default function IndustrialViabilityWorkspace({params}:{params:Promise<{i
       <div className="eyebrow">Explanation</div>
       <h2>{detailTarget.target_display_name} — <IndustrialStateBadge state={detailTarget.overall_state}/></h2>
       <div className="muted">Declared composition: {detailTarget.declared_elements.join(", ")||"not recorded"} · maturity {detailTarget.maturity_stage} · checksum <code>{detailTarget.assessment_checksum.slice(0,16)}…</code></div>
+
+      <div className="notice" style={{marginTop:10}}>
+        <strong>Decision-loop handoff</strong>
+        <div className="muted" style={{marginTop:4}}>
+          Comparison above is read-only. Record this candidate assessment to create an immutable industrial-assessment reference and automatically close only matching open industrial actions that the evidence actually resolves. Regulatory and supply actions remain open for unknown, insufficient, conflicting or not-assessed dimensions. A stale-evidence action closes only when at least one current industrial record exists.
+        </div>
+        <button className="btn" style={{marginTop:8}} disabled={recordAndSync.isPending} onClick={()=>recordAndSync.mutate()}>
+          {recordAndSync.isPending?"Recording & reassessing…":"Record assessment & update decision loop"}
+        </button>
+        {syncSummary&&<div className="muted" style={{marginTop:8}}>
+          Persisted assessment <code>{syncSummary.assessmentId.slice(0,12)}…</code> · checksum <code>{syncSummary.assessmentChecksum.slice(0,12)}…</code> · {syncSummary.closedActions}/{syncSummary.eligibleActions} eligible action(s) closed{syncSummary.skippedActions?` · ${syncSummary.skippedActions} unresolved action(s) kept open`:""}.
+        </div>}
+        {syncError&&<div className="notice fail" style={{marginTop:8}}><strong>Assessment was not synchronized.</strong><div>{syncError}</div><div className="muted">No unresolved decision action is marked complete when synchronization fails.</div></div>}
+      </div>
 
       {detailTarget.hard_constraint_failures.length>0&&<div className="notice fail" style={{marginTop:10}}>
         <strong>Hard constraint failures</strong>
