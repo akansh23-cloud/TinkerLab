@@ -126,21 +126,24 @@ def _unsupported_constraint(constraint: Any, reason: str, detail: str | None = N
         "target_value_upper": constraint.target_value_upper,
         "target_unit": constraint.target_unit,
         "hard_or_soft": constraint.hard_or_soft,
+        "weight": constraint.weight,
+        "severity": constraint.severity,
         "reason": reason,
         "detail": detail,
     }
 
 
-def _mission_screening_constraints(project: ReplacementProject) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    merged: dict[str, dict[str, Any]] = {}
+def _mission_constraints(
+    project: ReplacementProject,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    merged_hard: dict[str, dict[str, Any]] = {}
+    preferences: list[dict[str, Any]] = []
     unsupported: list[dict[str, Any]] = []
 
     for constraint in project.constraints:
         key = str(constraint.property_key)
         comparator = str(constraint.comparator)
-        if str(constraint.hard_or_soft) != "hard":
-            unsupported.append(_unsupported_constraint(constraint, "soft_constraint_not_used_as_search_gate"))
-            continue
+        hard_or_soft = str(constraint.hard_or_soft)
         if str(constraint.constraint_type) != "property":
             unsupported.append(_unsupported_constraint(constraint, "non_property_constraint"))
             continue
@@ -153,7 +156,7 @@ def _mission_screening_constraints(project: ReplacementProject) -> tuple[list[di
                 _unsupported_constraint(
                     constraint,
                     "comparator_not_losslessly_searchable",
-                    "Materials Project range filters are inclusive; strict/equality/boolean mission semantics are not approximated.",
+                    "Materials Project range semantics are inclusive; strict/equality/boolean mission semantics are not approximated.",
                 )
             )
             continue
@@ -176,24 +179,42 @@ def _mission_screening_constraints(project: ReplacementProject) -> tuple[list[di
             unsupported.append(_unsupported_constraint(constraint, "missing_upper_bound"))
             continue
 
-        row = merged.setdefault(
+        minimum = primary if comparator in {">=", "between"} else None
+        maximum = primary if comparator == "<=" else upper if comparator == "between" else None
+
+        if hard_or_soft == "soft":
+            preferences.append(
+                {
+                    "constraint_id": constraint.id,
+                    "property": key,
+                    "minimum": minimum,
+                    "maximum": maximum,
+                    "unit": target_unit,
+                    "weight": max(0.0, float(constraint.weight or 1.0)),
+                    "severity": int(constraint.severity or 1),
+                    "description": constraint.description,
+                }
+            )
+            continue
+        if hard_or_soft != "hard":
+            unsupported.append(_unsupported_constraint(constraint, "unknown_hard_or_soft_semantics"))
+            continue
+
+        row = merged_hard.setdefault(
             key,
             {"property": key, "minimum": None, "maximum": None, "unit": target_unit, "source_constraint_ids": []},
         )
         row["source_constraint_ids"].append(constraint.id)
-        if comparator == ">=":
-            row["minimum"] = primary if row["minimum"] is None else max(row["minimum"], primary)
-        elif comparator == "<=":
-            row["maximum"] = primary if row["maximum"] is None else min(row["maximum"], primary)
-        else:
-            row["minimum"] = primary if row["minimum"] is None else max(row["minimum"], primary)
-            row["maximum"] = upper if row["maximum"] is None else min(row["maximum"], upper)
+        if minimum is not None:
+            row["minimum"] = minimum if row["minimum"] is None else max(row["minimum"], minimum)
+        if maximum is not None:
+            row["maximum"] = maximum if row["maximum"] is None else min(row["maximum"], maximum)
 
-    for row in merged.values():
+    for row in merged_hard.values():
         if row["minimum"] is not None and row["maximum"] is not None and row["minimum"] > row["maximum"]:
             raise HTTPException(422, f"Mission has contradictory hard constraints for {row['property']}: minimum exceeds maximum")
 
-    return list(merged.values()), unsupported
+    return list(merged_hard.values()), preferences, unsupported
 
 
 def _connector() -> MaterialsProjectConnector:
@@ -242,19 +263,23 @@ def discover_for_replacement_mission(
     if project is None or project.organisation_id != org:
         raise HTTPException(404, "Replacement project not found")
 
-    translated, unsupported = _mission_screening_constraints(project)
+    translated, preferences, unsupported = _mission_constraints(project)
     screening = [
         {"property": row["property"], "minimum": row["minimum"], "maximum": row["maximum"]}
         for row in translated
     ]
     filters = _discovery_filters(payload)
-    if not screening and not any(value is not None for value in filters.values()):
-        raise HTTPException(422, "This mission has no hard constraints that can be losslessly translated to Materials Project search filters.")
+    if not screening and not any(value for value in filters.values() if value is not None):
+        raise HTTPException(
+            422,
+            "This mission has no hard constraints or chemistry filters that can bound a Materials Project search. Soft targets alone cannot define a reproducible upstream search pool.",
+        )
 
     try:
         result = preview_materials_project_candidates(
             _connector(),
             constraints=screening,
+            preferences=preferences,
             search_filters=filters,
             max_candidates=payload.max_candidates,
             search_pool=payload.search_pool,
@@ -263,21 +288,28 @@ def discover_for_replacement_mission(
     except (ConnectorError, ValueError) as exc:
         raise HTTPException(422, str(exc)) from exc
 
-    hard_count = sum(str(constraint.hard_or_soft) == "hard" for constraint in project.constraints)
+    hard_constraints = [constraint for constraint in project.constraints if str(constraint.hard_or_soft) == "hard"]
+    soft_constraints = [constraint for constraint in project.constraints if str(constraint.hard_or_soft) == "soft"]
     represented_ids = {source_id for row in translated for source_id in row["source_constraint_ids"]}
+    preference_ids = {str(row["constraint_id"]) for row in preferences}
     result["mission_context"] = {
         "project_id": project.id,
         "project_name": project.name,
         "baseline_material_id": project.baseline_material_id,
         "baseline_material_name": project.baseline_material.display_name if project.baseline_material else None,
-        "hard_constraint_count": hard_count,
+        "hard_constraint_count": len(hard_constraints),
         "hard_constraints_represented": len(represented_ids),
-        "hard_constraint_coverage": round(len(represented_ids) / hard_count, 4) if hard_count else 0.0,
+        "hard_constraint_coverage": round(len(represented_ids) / len(hard_constraints), 4) if hard_constraints else 0.0,
+        "soft_constraint_count": len(soft_constraints),
+        "soft_preferences_represented": len(preference_ids),
+        "soft_preference_coverage": round(len(preference_ids) / len(soft_constraints), 4) if soft_constraints else 0.0,
         "translated_constraints": translated,
+        "ranking_preferences": preferences,
         "unsupported_constraints": unsupported,
         "search_semantics": (
-            "Only losslessly translatable hard numeric requirements are upstream search gates. "
-            "Soft, unsupported, strict, equality, and non-property requirements remain evidence gaps and must be evaluated later."
+            "Losslessly translatable hard numeric requirements define upstream eligibility. "
+            "Losslessly evaluable soft requirements are applied only after hard-gate state as mission-authored weighted ranking preferences. "
+            "Unsupported, strict, equality, boolean, and non-property requirements remain explicit evidence gaps."
         ),
     }
     return result
