@@ -10,7 +10,12 @@ from app.domain.evidence_engine import (
     classify_legacy_evidence_tier,
     tier_can_satisfy_blocking_gate,
 )
-from app.models.entities import Evidence, Material, MaterialPropertyDefinition, MaterialPropertyObservation
+from app.models.entities import (
+    Evidence,
+    Material,
+    MaterialPropertyDefinition,
+    MaterialPropertyObservation,
+)
 from app.schemas.evidence_engine import PropertyValidityEnvelopeV13Schema
 from app.services.property_envelopes import materialize_phase13_measurement
 
