@@ -3,7 +3,17 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -53,6 +63,12 @@ class PropertyModelV13(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
     __table_args__ = (
-        UniqueConstraint("material_id", "property_definition_id", "model_key", "version", name="uq_property_model_v13_version"),
+        UniqueConstraint(
+            "material_id",
+            "property_definition_id",
+            "model_key",
+            "version",
+            name="uq_property_model_v13_version",
+        ),
         Index("ix_property_model_v13_material_property", "material_id", "property_definition_id"),
     )
