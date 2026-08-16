@@ -18,6 +18,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session, selectinload
 
+from app.domain.material_identity import MaterialIdentityConflict
 from app.models.entities import (
     Candidate,
     CandidateHypothesis,
@@ -32,6 +33,7 @@ from app.models.entities import (
 )
 from app.services.experiments_lab import replacement_decision
 from app.services.industrial import assess_industrial_viability
+from app.services.material_identity import assert_no_identity_conflation
 from app.services.material_states import reference_state, states_for_target
 from app.services.reasoning import reason_about_candidate
 from app.services.replacement.policy import resolve_criticality, resolve_policy
@@ -184,6 +186,21 @@ class PortfolioContext:
                 state_id=state.id if state else None,
                 hypothesis_lineage=lineage, generation_rationale=rationale,
             ))
+
+        # Phase 13.2 invariant: equal chemistry is not equal engineering identity. Before any
+        # portfolio engine can compare, rank, recommend or generate a dossier, reject a screen that
+        # places structured same-composition/different-identity materials into one evidence scope.
+        # Legacy UNKNOWN identities have no composition fingerprint and therefore cannot trigger a
+        # fabricated collision; they remain explicitly unresolved until curated.
+        identity_scope = [v.target_id for v in views if v.target_kind == "known_material"]
+        incumbent = self.incumbent_material()
+        if incumbent is not None:
+            identity_scope.append(incumbent.id)
+        try:
+            assert_no_identity_conflation(self.db, identity_scope)
+        except MaterialIdentityConflict as exc:
+            raise PortfolioError(f"MATERIAL_IDENTITY_CONFLICT: {exc}") from exc
+
         # Stable display order: name first so the UI is readable, id as the deterministic tiebreak.
         self._candidates = sorted(views, key=lambda v: (v.display_name, v.candidate_id))
 
