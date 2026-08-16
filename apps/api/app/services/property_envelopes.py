@@ -4,26 +4,48 @@ import uuid
 
 from sqlalchemy.orm import Session
 
-from app.domain.evidence_engine import DistributionType, TemperatureStatus, classify_legacy_evidence_tier
+from app.domain.evidence_engine import (
+    DistributionType,
+    TemperatureStatus,
+    classify_legacy_evidence_tier,
+)
 from app.models.entities import MaterialPropertyObservation
 from app.models.evidence_engine import PropertyMeasurementV13, PropertyValidityEnvelopeV13
 from app.services.units import UnitError, convert
 
 
-def _temperature_from_legacy(observation: MaterialPropertyObservation) -> tuple[float | None, TemperatureStatus, str]:
+def _temperature_from_legacy(
+    observation: MaterialPropertyObservation,
+) -> tuple[float | None, TemperatureStatus, str]:
     cs = observation.condition_set
     if cs is not None and cs.temperature_value is not None and cs.temperature_unit:
         try:
-            return float(convert(float(cs.temperature_value), cs.temperature_unit, "K")), TemperatureStatus.KNOWN, "condition_set"
+            return (
+                float(convert(float(cs.temperature_value), cs.temperature_unit, "K")),
+                TemperatureStatus.KNOWN,
+                "condition_set",
+            )
         except UnitError:
             return None, TemperatureStatus.UNKNOWN, "condition_set_temperature_unit_not_convertible"
     conditions = observation.conditions or {}
     if isinstance(conditions.get("temperature_k"), (int, float)):
-        return float(conditions["temperature_k"]), TemperatureStatus.KNOWN, "legacy_conditions.temperature_k"
+        return (
+            float(conditions["temperature_k"]),
+            TemperatureStatus.KNOWN,
+            "legacy_conditions.temperature_k",
+        )
     temperature = conditions.get("temperature")
-    if isinstance(temperature, dict) and isinstance(temperature.get("value"), (int, float)) and temperature.get("unit"):
+    if (
+        isinstance(temperature, dict)
+        and isinstance(temperature.get("value"), (int, float))
+        and temperature.get("unit")
+    ):
         try:
-            return float(convert(float(temperature["value"]), str(temperature["unit"]), "K")), TemperatureStatus.KNOWN, "legacy_conditions.temperature"
+            return (
+                float(convert(float(temperature["value"]), str(temperature["unit"]), "K")),
+                TemperatureStatus.KNOWN,
+                "legacy_conditions.temperature",
+            )
         except UnitError:
             pass
     return None, TemperatureStatus.UNKNOWN, "not_reported"
@@ -35,14 +57,26 @@ def _distribution_from_legacy(observation: MaterialPropertyObservation) -> Distr
     if declared in {x.value for x in DistributionType if x is not DistributionType.UNSPECIFIED}:
         return DistributionType(declared)
     uncertainty_type = str(observation.uncertainty_type or "").strip().lower()
-    if uncertainty_type in {"std_dev", "standard_deviation", "standard"} and observation.uncertainty_stddev is not None:
+    if (
+        uncertainty_type in {"std_dev", "standard_deviation", "standard"}
+        and observation.uncertainty_stddev is not None
+    ):
         return DistributionType.NORMAL
     return DistributionType.UNSPECIFIED
 
 
-def materialize_phase13_measurement(db: Session, observation: MaterialPropertyObservation, *, review_required: bool = True) -> PropertyMeasurementV13:
+def materialize_phase13_measurement(
+    db: Session,
+    observation: MaterialPropertyObservation,
+    *,
+    review_required: bool = True,
+) -> PropertyMeasurementV13:
     """Project one legacy observation into Phase-13 custody without mutating the legacy row."""
-    existing = db.query(PropertyMeasurementV13).filter(PropertyMeasurementV13.legacy_observation_id == observation.id).one_or_none()
+    existing = (
+        db.query(PropertyMeasurementV13)
+        .filter(PropertyMeasurementV13.legacy_observation_id == observation.id)
+        .one_or_none()
+    )
     if existing is not None:
         return existing
     evidence = observation.evidence
@@ -56,9 +90,16 @@ def materialize_phase13_measurement(db: Session, observation: MaterialPropertyOb
     )
     canonical_value = None
     canonical_unit = definition.canonical_unit
-    if observation.value_type == "numeric" and observation.numeric_value is not None and observation.unit and canonical_unit:
+    if (
+        observation.value_type == "numeric"
+        and observation.numeric_value is not None
+        and observation.unit
+        and canonical_unit
+    ):
         try:
-            canonical_value = float(convert(float(observation.numeric_value), observation.unit, canonical_unit))
+            canonical_value = float(
+                convert(float(observation.numeric_value), observation.unit, canonical_unit)
+            )
         except UnitError:
             canonical_value = None
     temperature_k, temperature_status, temperature_source = _temperature_from_legacy(observation)
@@ -102,10 +143,26 @@ def materialize_phase13_measurement(db: Session, observation: MaterialPropertyOb
         property_measurement_id=measurement.id,
         temperature_k=temperature_k,
         temperature_status=temperature_status.value,
-        humidity_percent=getattr(observation.condition_set, "humidity_percent", None) if observation.condition_set else None,
-        strain_rate=getattr(observation.condition_set, "strain_rate", None) if observation.condition_set else None,
-        direction=getattr(observation.condition_set, "sample_orientation", None) if observation.condition_set else None,
-        material_state=getattr(observation.condition_set, "material_state", None) if observation.condition_set else None,
+        humidity_percent=(
+            getattr(observation.condition_set, "humidity_percent", None)
+            if observation.condition_set
+            else None
+        ),
+        strain_rate=(
+            getattr(observation.condition_set, "strain_rate", None)
+            if observation.condition_set
+            else None
+        ),
+        direction=(
+            getattr(observation.condition_set, "sample_orientation", None)
+            if observation.condition_set
+            else None
+        ),
+        material_state=(
+            getattr(observation.condition_set, "material_state", None)
+            if observation.condition_set
+            else None
+        ),
         metadata_json={"migrated_from_legacy": True, "review_required": review_required},
     )
     db.flush()
