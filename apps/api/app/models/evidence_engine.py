@@ -47,7 +47,7 @@ class PropertyMeasurementV13(Base):
     migration_metadata: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
-    envelope: Mapped["PropertyValidityEnvelopeV13 | None"] = relationship(
+    envelope: Mapped[PropertyValidityEnvelopeV13 | None] = relationship(
         back_populates="measurement", uselist=False, cascade="all, delete-orphan"
     )
     __table_args__ = (
