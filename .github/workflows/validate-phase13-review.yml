@@ -1,0 +1,38 @@
+name: Validate Phase 13.1 Review
+
+on:
+  push:
+    branches:
+      - phase13-1-review
+
+jobs:
+  phase13_1:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: apps/api/requirements.txt
+      - name: Install API dependencies
+        run: python -m pip install -r apps/api/requirements.txt
+      - name: Compile Phase 13.1 modules
+        run: |
+          python -m py_compile \
+            apps/api/app/domain/evidence_engine.py \
+            apps/api/app/models/evidence_engine.py \
+            apps/api/app/schemas/evidence_engine.py \
+            apps/api/app/services/property_envelopes.py \
+            apps/api/alembic/versions/0014_phase13_1_property_envelopes.py \
+            apps/web/python_backend/app/domain/evidence_engine.py \
+            apps/web/python_backend/app/models/evidence_engine.py \
+            apps/web/python_backend/app/schemas/evidence_engine.py \
+            apps/web/python_backend/app/services/property_envelopes.py \
+            apps/web/python_backend/alembic/versions/0014_phase13_1_property_envelopes.py
+      - name: Ruff Phase 13.1
+        working-directory: apps/api
+        run: ruff check app/domain/evidence_engine.py app/models/evidence_engine.py app/schemas/evidence_engine.py app/services/property_envelopes.py tests/test_phase13_1_property_envelopes.py
+      - name: Phase 13.1 tests
+        working-directory: apps/api
+        run: pytest -q tests/test_phase13_1_property_envelopes.py
