@@ -10,6 +10,9 @@ import { PredictionOriginBadge } from "@/components/PredictionOriginBadge";
 import { StatusBadge } from "@/components/StatusBadge";
 
 const conditionBody=(temperature:number)=>({temperature:{value:temperature,unit:"degC"}});
+type ReplacementProgram={id:string;project_id:string};
+type DecisionAction={id:string;candidate_id?:string|null;requirement_key?:string|null;action_type:string;status:string};
+type DecisionSync={completed:number;eligible:number;note:string};
 
 export default function PredictionLabPage({params}:{params:Promise<{id:string}>}) {
   const {id}=use(params); const qc=useQueryClient();
@@ -22,10 +25,59 @@ export default function PredictionLabPage({params}:{params:Promise<{id:string}>}
   const approvedVersion=versions.data?.find(v=>v.approved_at&&!v.retired_at)??versions.data?.[0];
   const [versionId,setVersionId]=useState<string>(""); const selectedVersion=versions.data?.find(v=>v.id===versionId)??approvedVersion;
   const [temperature,setTemperature]=useState(23); const [preview,setPreview]=useState<PredictionPreview|null>(null); const [selectedRun,setSelectedRun]=useState<string>("");
+  const [decisionSync,setDecisionSync]=useState<DecisionSync|null>(null); const [decisionSyncError,setDecisionSyncError]=useState("");
   const targets=useMemo<PredictionTargetRequest[]>(()=>candidates.data?.items.slice(0,200).map(c=>({candidate_id:c.id}))??[],[candidates.data]);
   const payload=()=>({model_version_id:selectedVersion!.id,property_key:selectedVersion!.target_property_key,targets,conditions:conditionBody(temperature),requested_output_unit:selectedVersion!.canonical_output_unit,configuration:{source:"prediction_lab_ui",policy:"explicit_prediction_run_v1"}});
-  const previewRun=useMutation({mutationFn:()=>api<PredictionPreview>(`/replacement-projects/${id}/prediction-runs/preview`,{method:"POST",body:JSON.stringify(payload())}),onSuccess:setPreview});
-  const execute=useMutation({mutationFn:()=>api<PredictionRun>(`/replacement-projects/${id}/prediction-runs`,{method:"POST",body:JSON.stringify({...payload(),created_by:project.data!.created_by})}),onSuccess:async(r)=>{setSelectedRun(r.id);await qc.invalidateQueries({queryKey:["prediction-runs",id]});}});
+  const previewRun=useMutation({mutationFn:()=>api<PredictionPreview>(`/replacement-projects/${id}/prediction-runs/preview`,{method:"POST",body:JSON.stringify(payload())}),onSuccess:()=>{setDecisionSync(null);setDecisionSyncError("");}});
+
+  async function closeDecisionActions(run:PredictionRun){
+    setDecisionSync(null);setDecisionSyncError("");
+    if(run.status!=="completed"){
+      setDecisionSync({completed:0,eligible:0,note:`Prediction run is ${run.status}; decision actions remain open until a completed result exists.`});
+      return;
+    }
+    try{
+      const resultPage=await api<PredictionResultPage>(`/prediction-runs/${run.id}/results?offset=0&limit=200`);
+      const usable=new Map<string,string>();
+      for(const prediction of resultPage.items){
+        const candidateId=String(prediction.target?.candidate_id??"");
+        if(!candidateId) continue;
+        if(prediction.status==="failed"||prediction.applicability_status==="inapplicable") continue;
+        usable.set(candidateId,prediction.id);
+      }
+      if(!usable.size){
+        setDecisionSync({completed:0,eligible:0,note:"No applicable completed candidate predictions were available to close decision actions."});
+        return;
+      }
+      const programs=await api<ReplacementProgram[]>(`/replacement-programs?project_id=${encodeURIComponent(id)}`);
+      let eligible=0,completed=0;
+      for(const program of programs){
+        const actions=await api<DecisionAction[]>(`/replacement-programs/${program.id}/actions?status=open`);
+        for(const action of actions){
+          if(action.action_type!=="run_property_prediction"||!action.candidate_id) continue;
+          const predictionId=usable.get(action.candidate_id);
+          if(!predictionId) continue;
+          if(action.requirement_key&&action.requirement_key!==run.property_key) continue;
+          eligible+=1;
+          await api(`/replacement-programs/${program.id}/actions/${action.id}/transition`,{
+            method:"POST",
+            body:JSON.stringify({
+              transition:"complete",
+              result_reference:`property_prediction:${predictionId}`,
+              note:`Closed automatically from completed prediction run ${run.id}. Prediction remains model-derived evidence, not a measurement.`,
+            }),
+          });
+          completed+=1;
+        }
+      }
+      setDecisionSync({completed,eligible,note:completed?"Candidate-scoped decision actions were closed with immutable prediction references. The backend emitted scoped evidence events and reassessed affected conclusions.":"No open decision action matched the completed prediction property/candidates; no decision state was changed."});
+      await qc.invalidateQueries({queryKey:["project",id]});
+    }catch(e){
+      setDecisionSyncError(e instanceof Error?e.message:"Prediction completed, but decision-loop synchronization failed.");
+    }
+  }
+
+  const execute=useMutation({mutationFn:()=>api<PredictionRun>(`/replacement-projects/${id}/prediction-runs`,{method:"POST",body:JSON.stringify({...payload(),created_by:project.data!.created_by})}),onSuccess:async(r)=>{setSelectedRun(r.id);await qc.invalidateQueries({queryKey:["prediction-runs",id]});await closeDecisionActions(r);}});
   const activeRun=selectedRun||runs.data?.[0]?.id||"";
   const results=useQuery({queryKey:["prediction-results",activeRun],queryFn:()=>api<PredictionResultPage>(`/prediction-runs/${activeRun}/results?offset=0&limit=200`),enabled:!!activeRun});
   const comparison=useQuery({queryKey:["prediction-comparison",id,activeRun],queryFn:()=>api<Evaluation[]>(`/replacement-projects/${id}/comparison?include_hypotheses=true&prediction_run_id=${activeRun}`),enabled:!!activeRun});
@@ -45,6 +97,7 @@ export default function PredictionLabPage({params}:{params:Promise<{id:string}>}
       {preview&&<div data-testid="prediction-preview" style={{marginTop:14}}><DemoModelWarning text={preview.demo_warning}/><div className="grid grid-2"><div className="notice"><strong>Applicability</strong><div>In domain {preview.in_domain_count} · borderline {preview.borderline_count} · inapplicable {preview.inapplicable_count}</div><div className="muted">Expected model executions: {preview.expected_model_executions}</div></div><div className="notice"><strong>Reproducibility</strong><div className="muted">config <code>{preview.configuration_checksum.slice(0,20)}…</code></div><div className="muted">conditions <code>{preview.target_condition_checksum.slice(0,20)}…</code></div></div></div><div className="table-wrap"><table><thead><tr><th>Target</th><th>Applicability</th><th>Feature checksum</th><th>Reason</th></tr></thead><tbody>{preview.targets.map(t=><tr key={`${t.target_kind}-${t.target_id}`}><td>{t.target_kind} · <code>{t.target_id.slice(0,10)}…</code></td><td><span className="badge">{t.applicability_status}</span></td><td><code>{t.feature_checksum.slice(0,14)}…</code></td><td className="muted">{t.reasons[0]?.message??"Applicable"}</td></tr>)}</tbody></table></div></div>}
       {(previewRun.error||execute.error)&&<div className="notice fail" style={{marginTop:12}}>{(previewRun.error as Error)?.message??(execute.error as Error)?.message}</div>}
     </div>
+    {(decisionSync||decisionSyncError)&&<div className={`notice ${decisionSyncError?"fail":""}`}><strong>Decision-loop integration</strong>{decisionSync&&<div><div>{decisionSync.completed}/{decisionSync.eligible} matching validation action(s) closed.</div><div className="muted">{decisionSync.note}</div></div>}{decisionSyncError&&<div className="muted">The prediction run remains valid and persisted, but its decision action was left open: {decisionSyncError}</div>}</div>}
     <div className="card"><div className="card-pad"><div className="topline"><div><div className="eyebrow">Prediction runs</div><h2>Auditable run history</h2></div>{runs.data?.length?<select value={activeRun} onChange={e=>setSelectedRun(e.target.value)}>{runs.data.map(r=><option key={r.id} value={r.id}>{r.created_at.slice(0,19)} · {r.property_key} · {r.status}</option>)}</select>:null}</div></div>{activeRun&&results.data?<div className="table-wrap"><table><thead><tr><th>Target</th><th>Origin</th><th>Prediction</th><th>Applicability</th><th>Uncertainty</th><th>Provenance</th></tr></thead><tbody>{results.data.items.map(p=><tr key={p.id}><td><code>{String(p.target?.candidate_id??p.target?.hypothesis_id??p.target?.material_id??"target").slice(0,12)}…</code></td><td><PredictionOriginBadge origin="model_prediction"/></td><td><PredictionInterval point={p.numeric_point_estimate} lower={p.uncertainty_lower} upper={p.uncertainty_upper} unit={p.output_unit}/></td><td><span className="badge">{p.applicability_status}</span></td><td>{p.uncertainty_method}<div className="muted">coverage {p.calibrated_coverage_level??"—"}</div></td><td><Link href={`/predictions/${p.id}`}>Inspect prediction</Link></td></tr>)}</tbody></table></div>:<div className="empty">No prediction run has been executed yet.</div>}</div>
     {activeRun&&<div className="card"><div className="card-pad"><h2>Constraint interpretation for selected run</h2><p className="muted">Evidence is used first. Predictions fill only missing evidence slots. A prediction interval crossing a hard constraint stays UNKNOWN.</p></div><div className="table-wrap"><table><thead><tr><th>Candidate</th><th>Requirement</th><th>Origin</th><th>Value / interval</th><th>Status</th><th>Reason</th></tr></thead><tbody>{comparison.data?.flatMap(e=>e.constraints.map((c,i)=><tr key={`${e.candidate_id}-${c.property_key}-${i}`}><td>{e.material_name}</td><td>{c.property_key}</td><td><PredictionOriginBadge origin={c.value_origin}/></td><td>{c.value_origin==="model_prediction"?<PredictionInterval point={typeof c.observed_value==="number"?c.observed_value:undefined} lower={c.prediction_interval?.[0]} upper={c.prediction_interval?.[1]} unit={c.observed_unit}/>:c.observed_value===undefined?"—":`${c.observed_value} ${c.observed_unit??""}`}</td><td><StatusBadge status={c.status}/>{c.value_origin==="model_prediction"&&<div className="muted">Predicted {c.status}</div>}</td><td className="muted">{c.unknown_reason??c.selection_rationale?.[0]??"—"}</td></tr>))}</tbody></table></div></div>}
   </div>;
